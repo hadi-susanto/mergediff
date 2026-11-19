@@ -200,7 +200,7 @@ Required targets (each with a one-line `## description` shown by `make help`):
 
 ## Text handling
 
-- Treat input as UTF-8. If a file contains a NUL byte in its first 8 KB, treat it as binary: show an error and exit `2`.
+- Treat input as UTF-8. If a file contains a NUL byte in its first 8 KB, treat it as binary: show an error and exit `2`. Invalid UTF-8 is also an error (exit `2`), because it cannot round-trip through the UI without being corrupted.
 - Detect line endings (LF vs CRLF) from LOCAL (fall back to BASE). Normalize to LF internally; write MERGED using the detected style.
 - Preserve whether the file ends with a trailing newline.
 - A missing BASE (Git passes an empty/nonexistent file for add/add conflicts) is treated as empty.
