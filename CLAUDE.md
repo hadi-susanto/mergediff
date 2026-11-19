@@ -205,6 +205,54 @@ Required targets (each with a one-line `## description` shown by `make help`):
 - Preserve whether the file ends with a trailing newline.
 - A missing BASE (Git passes an empty/nonexistent file for add/add conflicts) is treated as empty.
 
+## Error handling
+
+Use the standard library only (`errors`, `fmt`). No error or stack-trace
+libraries; adding one needs approval like any other dependency.
+
+### Returning errors
+
+- Wrap errors when they cross a function or package boundary, saying what was
+  being done and with which input:
+  `fmt.Errorf("read LOCAL %s: %w", path, err)`. Always use `%w`, never `%v`,
+  so `errors.Is` / `errors.As` keep working.
+- Don't repeat what the wrapped error already says (`os` errors already
+  include the path). Don't start messages with a capital letter or end them
+  with punctuation, and don't use words like "failed to" or "error:".
+- Name an error (`var ErrBinary = errors.New(...)`) when a caller needs to
+  react to it; only then. Callers check it with `errors.Is`, never by matching
+  message text.
+- Handle each error once: return it **or** log it, not both.
+- `internal/` packages return errors and never print, log, call `os.Exit`, or
+  panic on bad input. Panics are only for programmer bugs (broken invariants).
+
+### Exit codes and user-facing messages
+
+- Only `cmd/mergediff` turns errors into output and exit codes:
+  - usage errors → usage text + exit `2`
+  - I/O, binary (`textio.ErrBinary`), invalid UTF-8 (`textio.ErrNotUTF8`)
+    → `mergediff: <wrapped message>` on stderr, exit `2`
+- Errors from bound `App` methods reach the frontend as rejected promises.
+  The frontend shows the message in a dialog and never fails silently.
+  A failed `Save` keeps the window open with the result untouched, so the
+  user can retry or cancel.
+
+### Panics
+
+- `main()` and every bound `App` method defer a recover handler that writes the
+  panic value and `runtime/debug.Stack()` to stderr **and** to a crash log
+  (`<os.UserCacheDir()>/mergediff/crash-<timestamp>.log`, because a GUI app
+  may have no visible stderr), then exits `2`. Before writing this handler,
+  check what Wails v2 itself does with a panic in a bound method.
+- Never recover a panic just to continue; it always ends the program after
+  reporting.
+
+### Tests
+
+- Test error paths with `errors.Is` / `errors.As`, not message strings,
+  except where the message itself is the contract (e.g. that it includes the
+  file path).
+
 ## Merge engine (Go)
 
 Data model, serialized to the frontend as JSON:
