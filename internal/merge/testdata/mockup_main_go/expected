@@ -1,0 +1,12 @@
+package main
+
+import "fmt"
+
+// greet returns a greeting
+func greet(name string) string {
+	return "Hello, " + name
+}
+
+func main() {
+	fmt.Println(greet("Go"))
+}

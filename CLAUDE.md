@@ -46,7 +46,7 @@ mergediff/
     textio/               # Reading/writing files, line endings, binary detection
     diff/                 # Line diff wrapper + character-level diff
     merge/                # diff3 merge engine
-      testdata/           # Merge cases: <name>/base, local, remote, expected
+      testdata/           # Merge cases: <name>/base, local, remote, expected, chunks (format in cases_test.go)
   frontend/
     embed.go              # package frontend: //go:embed all:dist → var Assets embed.FS
     wailsjs/              # Generated Wails bindings (do not edit)
