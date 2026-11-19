@@ -26,8 +26,7 @@ Build **mergediff**: a lightweight, cross-platform, open-source **3-way merge** 
 - **Backend:** Go + Wails v2
 - **Frontend:** Vite + TypeScript, **no UI framework** (vanilla TS)
 - **Editor:** CodeMirror 6 (`@codemirror/state`, `@codemirror/view`, `@codemirror/language`, `@codemirror/commands`, plus language packages for syntax highlighting). `@codemirror/merge` may be used for the 2-way view or as reference, but the 3-pane merge view is custom.
-- **Line diff:** `github.com/aymanbagabas/go-udiff` (or a self-implemented Myers/histogram diff if that library's API doesn't fit; ask first)
-- **Character diff:** `github.com/sergi/go-diff` (diffmatchpatch)
+- **Line and character diff:** `github.com/sergi/go-diff` (diffmatchpatch). Line diff uses its line mode (`DiffLinesToRunes` + `DiffMainRunes`) with `DiffTimeout = 0` so results are exact (a timeout also enables a non-optimal "half-match" shortcut). `github.com/aymanbagabas/go-udiff` was evaluated and rejected: its LCS search is capped at ~50 edits, after which the rest of the file collapses into one huge hunk.
 
 ## Repository layout
 

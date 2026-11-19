@@ -1,0 +1,22 @@
+# Wails / Go build output
+/cmd/mergediff/build/bin/
+/bin/
+*.exe
+*.test
+*.out
+coverage.*
+
+# Frontend
+/frontend/node_modules/
+/frontend/dist/
+/frontend/package.json.md5
+
+# Release packaging
+/dist/
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
