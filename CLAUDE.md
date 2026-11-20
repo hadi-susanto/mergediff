@@ -32,6 +32,7 @@ Build **mergediff**: a lightweight, cross-platform, open-source **3-way merge** 
   experimental in v3.1.0 and not used; revisit when Wails marks it stable.
 - **Frontend:** Vite + TypeScript 5.x, **no UI framework** (vanilla TS)
 - **Editor:** CodeMirror 6 (`@codemirror/state`, `@codemirror/view`, `@codemirror/language`, `@codemirror/commands`, plus language packages for syntax highlighting). `@codemirror/merge` may be used for the 2-way view or as reference, but the 3-pane merge view is custom.
+- **Frontend tests:** Node's built-in runner (`node --test`, Node 24 type stripping), no test framework dependency. Logic worth testing (chunk tracking, apply/undo) lives in DOM-free modules that import each other with explicit `.ts` extensions and use no TypeScript enums (Node only strips types); they may import types, not values, from `frontend/bindings/`.
 - **Line and character diff:** `github.com/sergi/go-diff` (diffmatchpatch). Line diff uses its line mode (`DiffLinesToRunes` + `DiffMainRunes`) with `DiffTimeout = 0` so results are exact (a timeout also enables a non-optimal "half-match" shortcut). `github.com/aymanbagabas/go-udiff` was evaluated and rejected: its LCS search is capped at ~50 edits, after which the rest of the file collapses into one huge hunk.
 
 ## Repository layout
@@ -205,7 +206,8 @@ Required targets (each with a one-line `## description` shown by `make help`):
 - `test` — `go test ./...`
 - `vet` — `go vet ./...` and `gofmt -l` (fail if any file listed)
 - `typecheck` — `npx tsc --noEmit` in `frontend/`
-- `check` — `vet`, `typecheck`, `test`
+- `test-frontend` — `node --test` on `frontend/src/**/*.test.ts`
+- `check` — `vet`, `typecheck`, `test`, `test-frontend`
 - `version` — print the version string the build would embed
 - `clean` — remove `bin/` and built files in `frontend/dist` (keep `.gitkeep`)
 - `release` — create and push today's tag. It must, in order, and stop at the first failure:
@@ -223,7 +225,7 @@ Required targets (each with a one-line `## description` shown by `make help`):
 
 - Trigger: `on: push: tags: ['v[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]']`. Permissions: `contents: write`.
 - First step in every job: derive `VERSION_DATE` by stripping the leading `v` from the tag, validate it is a real `YYYY-MM-DD` date, and fail otherwise. Derive `COMMIT` with `git rev-parse --short=7 HEAD`.
-- **test** job (ubuntu-latest): Go tests, vet, gofmt check, frontend type-check. The root package imports Wails (cgo), so this job also installs `libgtk-4-dev libwebkitgtk-6.0-dev`; bindings are committed, so it does not need `wails3`.
+- **test** job (ubuntu-latest): Go tests, vet, gofmt check, frontend type-check and frontend tests. The root package imports Wails (cgo), so this job also installs `libgtk-4-dev libwebkitgtk-6.0-dev`; bindings are committed, so it does not need `wails3`.
 - Every job that builds or generates bindings installs the `wails3` CLI at the
   version in go.mod.
 - **build** job, needs `test`, matrix:
@@ -354,6 +356,7 @@ type Session struct {
 	Language      string   `json:"language"` // derived from file extension
 	Title         string   `json:"title"`    // file name(s) for the window title
 	EOL           string   `json:"eol"`      // "LF" | "CRLF", for the status bar
+	AutoApplied   bool     `json:"autoApplied"` // --auto-apply: InitialResult already has the non-conflicting chunks
 }
 
 func (a *App) LoadSession() (Session, error)
@@ -455,6 +458,7 @@ Each phase ends with its acceptance criteria met, tests green, and a summary.
 ### Phase 4 — Navigation and precision
 
 - Chunk-aligned scroll sync, character-level highlights, previous/next navigation, keyboard shortcuts.
+- Character spans are widened to whole words when they cut through a word (e.g. `[sampl]e` → `[sample]`, `[aft]er` → `[after]`), in `internal/diff`, with tests.
 - **Accept:** scrolling keeps matching chunks aligned on a file with chunks of very different heights; all shortcuts work.
 
 ### Phase 5 — Polish
