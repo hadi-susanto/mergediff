@@ -26,7 +26,7 @@ func main() {
 			os.Exit(exitError)
 		}
 	}()
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(run(devArgs(os.Args[1:]), os.Stdout, os.Stderr))
 }
 
 // startGUI opens the window and blocks until it closes, returning the exit
