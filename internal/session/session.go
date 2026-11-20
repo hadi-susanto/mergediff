@@ -41,6 +41,9 @@ type Session struct {
 	InitialResult string        `json:"initialResult"`
 	Language      string        `json:"language"` // from the file extension; "" if unknown
 	EOL           string        `json:"eol"`      // "LF" or "CRLF"; the style MERGED is written in
+	// AutoApplied reports that InitialResult already contains every
+	// non-conflicting chunk (--auto-apply), so the UI marks them applied.
+	AutoApplied bool `json:"autoApplied"`
 
 	eol    textio.EOL
 	output string
@@ -106,6 +109,7 @@ func LoadMerge(base, local, remote, output string, autoApply bool) (*Session, er
 		InitialResult: initial,
 		Language:      Language(output),
 		EOL:           eol.Name(),
+		AutoApplied:   autoApply,
 		eol:           eol,
 		output:        output,
 	}, nil

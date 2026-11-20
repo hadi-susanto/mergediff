@@ -52,4 +52,10 @@ export interface Session {
      * "LF" or "CRLF"; the style MERGED is written in
      */
     "eol": string;
+
+    /**
+     * AutoApplied reports that InitialResult already contains every
+     * non-conflicting chunk (--auto-apply), so the UI marks them applied.
+     */
+    "autoApplied": boolean;
 }

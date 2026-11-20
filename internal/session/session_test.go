@@ -128,8 +128,11 @@ func TestLoadMergeAndSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if auto.InitialResult != "A\nb\nC\nd\nE\n" {
-		t.Fatalf("auto-applied initial result = %q", auto.InitialResult)
+	if auto.InitialResult != "A\nb\nC\nd\nE\n" || !auto.AutoApplied {
+		t.Fatalf("auto-applied initial result = %q, AutoApplied = %v", auto.InitialResult, auto.AutoApplied)
+	}
+	if s.AutoApplied {
+		t.Fatal("AutoApplied set without --auto-apply")
 	}
 }
 
