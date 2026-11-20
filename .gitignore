@@ -1,15 +1,20 @@
-# Wails / Go build output
-/cmd/mergediff/build/bin/
+# Build output
 /bin/
 *.exe
 *.test
 *.out
 coverage.*
 
+# Wails / Task state
+/.task/
+/.wails/
+
 # Frontend
 /frontend/node_modules/
-/frontend/dist/
-/frontend/package.json.md5
+# Vite output; .gitkeep stays so //go:embed all:frontend/dist compiles on a
+# fresh clone (Vite restores it from frontend/public/.gitkeep on every build).
+/frontend/dist/*
+!/frontend/dist/.gitkeep
 
 # Release packaging
 /dist/
