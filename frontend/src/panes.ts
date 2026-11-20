@@ -1,5 +1,6 @@
+import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { EditorState, type Extension } from "@codemirror/state";
-import { EditorView, lineNumbers } from "@codemirror/view";
+import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 
 /** A titled editor pane. */
 export interface Pane {
@@ -7,11 +8,11 @@ export interface Pane {
   view: EditorView;
 }
 
-/**
- * Creates a read-only pane with a header and line numbers. The text is shown
- * as-is; selection and copying still work.
- */
-export function createReadOnlyPane(title: string, tooltip: string, text: string, extensions: Extension[]): Pane {
+// Only "\n" separates lines. CodeMirror would otherwise also split on a lone
+// "\r", and saving would turn it into "\n".
+const lfOnly = EditorState.lineSeparator.of("\n");
+
+function paneShell(title: string, tooltip: string): { root: HTMLElement; host: HTMLElement } {
   const root = document.createElement("section");
   root.className = "pane";
 
@@ -24,12 +25,34 @@ export function createReadOnlyPane(title: string, tooltip: string, text: string,
   const host = document.createElement("div");
   host.className = "pane-editor";
   root.appendChild(host);
+  return { root, host };
+}
 
+/**
+ * Creates a read-only pane with a header and line numbers. The text is shown
+ * as-is; selection and copying still work.
+ */
+export function createReadOnlyPane(title: string, tooltip: string, text: string, extensions: Extension[]): Pane {
+  const { root, host } = paneShell(title, tooltip);
   const view = new EditorView({
     parent: host,
     state: EditorState.create({
       doc: text,
-      extensions: [lineNumbers(), EditorState.readOnly.of(true), EditorView.editable.of(false), ...extensions],
+      extensions: [lineNumbers(), lfOnly, EditorState.readOnly.of(true), EditorView.editable.of(false), ...extensions],
+    }),
+  });
+  return { root, view };
+}
+
+/** Creates the editable Result pane with undo history. */
+export function createEditablePane(title: string, tooltip: string, text: string, extensions: Extension[]): Pane {
+  const { root, host } = paneShell(title, tooltip);
+  root.classList.add("pane-editable");
+  const view = new EditorView({
+    parent: host,
+    state: EditorState.create({
+      doc: text,
+      extensions: [lineNumbers(), lfOnly, history(), keymap.of([...defaultKeymap, ...historyKeymap]), ...extensions],
     }),
   });
   return { root, view };

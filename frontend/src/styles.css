@@ -17,6 +17,8 @@
   --deleted-strong: #c9c9c4;
   --conflict-bg: #fbe4e4;
   --conflict-strong: #f0a9a9;
+  --conflict-fg: #b42318;
+  --added-fg: #2b6a32;
 
   --btn-bg: #ffffff;
   --btn-border: #cfcdc6;
@@ -42,6 +44,8 @@
     --deleted-strong: #4a4a46;
     --conflict-bg: #4a2224;
     --conflict-strong: #8c3235;
+    --conflict-fg: #f4b4b0;
+    --added-fg: #a9dca3;
 
     --btn-bg: #2b2b29;
     --btn-border: #45443f;
@@ -103,6 +107,81 @@ body {
   color: var(--btn-primary-fg);
 }
 
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* "Apply non-conflicting changes" split button with its dropdown */
+.split-button {
+  position: relative;
+  display: inline-flex;
+}
+
+.split-main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.split-caret {
+  border-left: none;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  padding: 5px 9px;
+}
+
+.split-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-width: 100%;
+  padding: 4px;
+  border: 1px solid var(--btn-border);
+  border-radius: 6px;
+  background: var(--btn-bg);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+}
+
+.split-menu[hidden] {
+  display: none;
+}
+
+.split-item {
+  font: inherit;
+  text-align: left;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--chrome-fg);
+  cursor: pointer;
+}
+
+.split-item:hover:not(:disabled) {
+  background: var(--chrome-bg);
+}
+
+.split-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* "N conflicts left" */
+.conflict-pill {
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: var(--conflict-bg);
+  color: var(--conflict-fg);
+}
+
+.conflict-pill-done {
+  background: var(--added-bg);
+  color: var(--added-fg);
+}
+
 /* Panes */
 .panes {
   flex: 1;
@@ -112,6 +191,14 @@ body {
 
 .panes-2 {
   grid-template-columns: 1fr 1fr;
+}
+
+.panes-3 {
+  grid-template-columns: minmax(0, 1fr) 52px minmax(0, 1fr) 52px minmax(0, 1fr);
+}
+
+.panes-3 .pane {
+  border-right: none;
 }
 
 .pane {
@@ -139,6 +226,10 @@ body {
   flex: 1;
   min-height: 0;
   background: var(--editor-bg);
+}
+
+.pane-editor .cm-editor.cm-focused {
+  outline: none;
 }
 
 .pane-editor .cm-editor {
@@ -176,6 +267,23 @@ body {
   background: var(--conflict-bg);
 }
 
+/* Resolved chunks fade. */
+.cm-line.md-line.md-resolved.md-added {
+  background: color-mix(in srgb, var(--added-bg) 35%, transparent);
+}
+
+.cm-line.md-line.md-resolved.md-modified {
+  background: color-mix(in srgb, var(--modified-bg) 35%, transparent);
+}
+
+.cm-line.md-line.md-resolved.md-deleted {
+  background: color-mix(in srgb, var(--deleted-bg) 35%, transparent);
+}
+
+.cm-line.md-line.md-resolved.md-conflict {
+  background: color-mix(in srgb, var(--conflict-bg) 35%, transparent);
+}
+
 /* Where one side has no lines for a change, a bar marks the position. */
 .cm-line.md-gap-above {
   box-shadow: inset 0 2px 0 var(--gap-colour);
@@ -195,6 +303,74 @@ body {
   --gap-colour: var(--deleted-strong);
 }
 
+.cm-line.md-gap-above.md-modified,
+.cm-line.md-gap-below.md-modified {
+  --gap-colour: var(--modified-strong);
+}
+
+.cm-line.md-gap-above.md-conflict,
+.cm-line.md-gap-below.md-conflict {
+  --gap-colour: var(--conflict-strong);
+}
+
+.cm-line.md-gap-above.md-resolved,
+.cm-line.md-gap-below.md-resolved {
+  opacity: 0.5;
+}
+
+/* Strips between panes with apply / ignore buttons */
+.strip {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--chrome-border);
+  border-right: 1px solid var(--chrome-border);
+  background: var(--chrome-bg);
+}
+
+.strip-header {
+  padding: 6px 0;
+}
+
+.strip-header::before {
+  content: "\200b";
+}
+
+.strip-body {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+}
+
+.strip-buttons {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+}
+
+.strip-btn {
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--chrome-muted);
+  cursor: pointer;
+}
+
+.strip-btn:hover {
+  background: var(--btn-border);
+  color: var(--chrome-fg);
+}
+
 /* Status bar */
 .statusbar {
   display: flex;
@@ -206,15 +382,27 @@ body {
   white-space: nowrap;
 }
 
-/* Error dialog */
-.error-dialog {
+/* Dialogs */
+.md-dialog {
   border: 1px solid var(--chrome-border);
   border-radius: 8px;
   background: var(--chrome-bg);
   color: var(--chrome-fg);
   max-width: 560px;
+  padding: 16px 20px;
 }
 
-.error-dialog p {
+.md-dialog::backdrop {
+  background: rgb(0 0 0 / 25%);
+}
+
+.md-dialog p {
+  margin: 0 0 16px;
   white-space: pre-wrap;
+}
+
+.md-dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }

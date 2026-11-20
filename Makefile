@@ -19,7 +19,7 @@ ARGS ?= testdata/dev/local.go testdata/dev/remote.go
 help: ## List targets
 	@echo "Usage: make <target>"
 	@echo
-	@awk 'BEGIN { FS = ":.*## " } /^[a-zA-Z_-]+:.*## / { printf "  %-12s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	@awk 'BEGIN { FS = ":.*## " } /^[a-zA-Z_-]+:.*## / { printf "  %-14s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 deps: ## Download Go modules, install frontend packages, check the Wails setup
 	go mod download
