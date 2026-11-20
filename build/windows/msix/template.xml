@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<MsixPackagingToolTemplate
+    xmlns="http://schemas.microsoft.com/msix/packaging/msixpackagingtool/template/2022">
+    <Settings
+        AllowTelemetry="false"
+        ApplyACLsToPackageFiles="true"
+        GenerateCommandLineFile="true"
+        AllowPromptForPassword="false">
+    </Settings>
+    <Installer
+        Path="mergediff"
+        Arguments=""
+        InstallLocation="C:\Program Files\Hadi Susanto Lesmana\mergediff">
+    </Installer>
+    <PackageInformation
+        PackageName="mergediff"
+        PackageDisplayName="mergediff"
+        PublisherName="CN=Hadi Susanto Lesmana"
+        PublisherDisplayName="Hadi Susanto Lesmana"
+        Version="0.0.0.0"
+        PackageDescription="3-way merge and 2-way diff tool">
+        <Capabilities>
+            <Capability Name="runFullTrust" />
+            
+        </Capabilities>
+        <Applications>
+            <Application
+                Id="io.github.hadi-susanto.mergediff"
+                Description="3-way merge and 2-way diff tool"
+                DisplayName="mergediff"
+                ExecutableName="mergediff"
+                EntryPoint="Windows.FullTrustApplication">
+                
+            </Application>
+        </Applications>
+        <Resources>
+            <Resource Language="en-us" />
+        </Resources>
+        <Dependencies>
+            <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.19041.0" />
+        </Dependencies>
+        <Properties>
+            <Framework>false</Framework>
+            <DisplayName>mergediff</DisplayName>
+            <PublisherDisplayName>Hadi Susanto Lesmana</PublisherDisplayName>
+            <Description>3-way merge and 2-way diff tool</Description>
+            <Logo>Assets\AppIcon.png</Logo>
+        </Properties>
+    </PackageInformation>
+    <SaveLocation PackagePath="mergediff.msix" />
+    <PackageIntegrity>
+        <CertificatePath></CertificatePath>
+    </PackageIntegrity>
+</MsixPackagingToolTemplate>

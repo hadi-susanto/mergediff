@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=mergediff
+Comment=3-way merge and 2-way diff tool
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/mergediff %u
+Terminal=false
+Type=Application
+Icon=mergediff
+Categories=Utility;
+StartupWMClass=mergediff
+
+ 
