@@ -14,7 +14,7 @@ WAILS3 ?= wails3
 ARGS ?= testdata/dev/local.go testdata/dev/remote.go
 
 .DEFAULT_GOAL := help
-.PHONY: help deps dev build test vet typecheck check version clean
+.PHONY: help deps dev build test test-frontend vet typecheck check version clean
 
 help: ## List targets
 	@echo "Usage: make <target>"
@@ -45,7 +45,10 @@ vet: ## Run go vet and fail if any Go file is not gofmt-formatted
 typecheck: ## Type-check the frontend
 	cd frontend && npx tsc --noEmit
 
-check: vet typecheck test ## Run vet, gofmt check, type-check and tests
+test-frontend: ## Run frontend logic tests (node --test)
+	cd frontend && node --test src/*.test.ts
+
+check: vet typecheck test test-frontend ## Run vet, gofmt check, type-check, Go and frontend tests
 
 version: ## Print the version string a build would embed
 	@echo "$(VERSION_DATE) ($(COMMIT)$(DIRTY))"

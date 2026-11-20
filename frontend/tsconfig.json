@@ -3,6 +3,7 @@
     "allowJs": true,
 
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
 
     "target": "ES2022",
@@ -25,5 +26,8 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
   },
-  "include": ["src", "bindings"]
+  "include": ["src", "bindings"],
+  // Tests run under node --test (type stripping); type-checking them would
+  // need @types/node.
+  "exclude": ["src/**/*.test.ts"]
 }
