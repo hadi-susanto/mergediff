@@ -1,6 +1,6 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { EditorState, type Extension } from "@codemirror/state";
-import { EditorView, keymap, lineNumbers } from "@codemirror/view";
+import { EditorState, Prec, type Extension } from "@codemirror/state";
+import { EditorView, keymap, lineNumbers, type Command, type KeyBinding } from "@codemirror/view";
 
 /** A titled editor pane. */
 export interface Pane {
@@ -44,6 +44,36 @@ export function createReadOnlyPane(title: string, tooltip: string, text: string,
   return { root, view };
 }
 
+/**
+ * Undo/redo bindings that run exactly once per keystroke.
+ *
+ * WebKitGTK delivers Ctrl+Z twice: as a keydown, which CodeMirror's keymap
+ * handles, and as a native "historyUndo" beforeinput event, which history()
+ * also handles (it needs to, for menu-driven undo). So one keystroke undid
+ * two steps. When a history key binding has just run, the matching
+ * beforeinput event is dropped; a beforeinput on its own still works.
+ */
+function singleUndo(): Extension {
+  let lastKeyRun = 0;
+  const mark =
+    (run: Command): Command =>
+    (view) => {
+      lastKeyRun = Date.now();
+      return run(view);
+    };
+  const bindings: KeyBinding[] = historyKeymap.map((b) => (b.run ? { ...b, run: mark(b.run) } : b));
+  const dropDuplicate = EditorView.domEventHandlers({
+    beforeinput(e) {
+      if ((e.inputType === "historyUndo" || e.inputType === "historyRedo") && Date.now() - lastKeyRun < 500) {
+        e.preventDefault();
+        return true;
+      }
+      return false;
+    },
+  });
+  return [keymap.of(bindings), Prec.highest(dropDuplicate)];
+}
+
 /** Creates the editable Result pane with undo history. */
 export function createEditablePane(title: string, tooltip: string, text: string, extensions: Extension[]): Pane {
   const { root, host } = paneShell(title, tooltip);
@@ -52,7 +82,7 @@ export function createEditablePane(title: string, tooltip: string, text: string,
     parent: host,
     state: EditorState.create({
       doc: text,
-      extensions: [lineNumbers(), lfOnly, history(), keymap.of([...defaultKeymap, ...historyKeymap]), ...extensions],
+      extensions: [lineNumbers(), lfOnly, history(), singleUndo(), keymap.of(defaultKeymap), ...extensions],
     }),
   });
   return { root, view };
