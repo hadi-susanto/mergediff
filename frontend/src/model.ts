@@ -26,6 +26,16 @@ export type Side = "local" | "remote";
  */
 export type SideState = "none" | "pending" | "applied" | "ignored";
 
+/**
+ * Character-level difference (internal/diff.Span): deleted spans index the
+ * left text, inserted spans the right, in UTF-16 code units.
+ */
+export interface CharSpan {
+  kind: "delete" | "insert";
+  start: number;
+  end: number;
+}
+
 /** Which non-conflicting changes "Apply non-conflicting changes" applies. */
 export type Source = "both" | "local" | "remote";
 

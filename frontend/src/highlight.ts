@@ -1,7 +1,7 @@
-import { RangeSetBuilder, type EditorState, type Text } from "@codemirror/state";
+import { RangeSetBuilder, StateEffect, StateField, type EditorState, type Range, type Text } from "@codemirror/state";
 import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
 import { chunkField, isResolved, type Tracked } from "./chunks.ts";
-import type { LineRange, MergeChunk, Side } from "./model.ts";
+import type { CharSpan, LineRange, MergeChunk, Side } from "./model.ts";
 
 /** Line change category, used as a CSS class suffix. */
 export type ChangeClass = "added" | "deleted" | "modified" | "conflict";
@@ -120,3 +120,44 @@ export function resultDecorations(state: EditorState): DecorationSet {
 
 /** Result-pane extension: decorations recomputed when chunks or text change. */
 export const resultHighlight = EditorView.decorations.compute(["doc", chunkField], resultDecorations);
+
+// --- character-level marks ---------------------------------------------------
+
+/** Replaces a pane's character marks (they arrive asynchronously). */
+export const setCharMarks = StateEffect.define<DecorationSet>();
+
+/** Character-level highlights of one pane; read-only panes never remap them. */
+export const charMarks = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(value, tr) {
+    for (const e of tr.effects) if (e.is(setCharMarks)) return e.value;
+    return value.map(tr.changes);
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
+/** A changed text inside a document: where it starts and its spans. */
+export interface CharMarkInput {
+  /** Offset of the chunk text's first character in the document. */
+  offset: number;
+  spans: readonly CharSpan[];
+  kind: CharSpan["kind"];
+  cls: string;
+}
+
+/** Builds mark decorations for the spans of the given kind. */
+export function charMarkSet(inputs: readonly CharMarkInput[]): DecorationSet {
+  const ranges: Range<Decoration>[] = [];
+  for (const input of inputs) {
+    for (const s of input.spans) {
+      if (s.kind !== input.kind || s.end <= s.start) continue;
+      ranges.push(Decoration.mark({ class: `md-char ${input.cls}` }).range(input.offset + s.start, input.offset + s.end));
+    }
+  }
+  return Decoration.set(ranges, true);
+}
+
+/** Document offset where 0-based line index `line` starts. */
+export function lineOffset(doc: Text, line: number): number {
+  return line < doc.lines ? doc.line(line + 1).from : doc.length;
+}

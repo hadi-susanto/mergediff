@@ -406,3 +406,35 @@ body {
   justify-content: flex-end;
   gap: 8px;
 }
+
+/* Character-level changes: a stronger shade of the chunk colour. */
+.md-char {
+  border-radius: 2px;
+}
+
+.md-char.md-char-modified {
+  background: var(--modified-strong);
+}
+
+.md-char.md-char-conflict {
+  background: var(--conflict-strong);
+}
+
+.cm-line.md-resolved .md-char.md-char-modified {
+  background: color-mix(in srgb, var(--modified-strong) 35%, transparent);
+}
+
+.cm-line.md-resolved .md-char.md-char-conflict {
+  background: color-mix(in srgb, var(--conflict-strong) 35%, transparent);
+}
+
+/* Navigation buttons */
+.btn-group {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.btn-icon {
+  min-width: 32px;
+  padding: 5px 8px;
+}
