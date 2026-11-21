@@ -64,7 +64,7 @@ export class ScrollSync {
 }
 
 /** Top of 0-based line index `line`, in document coordinates. */
-function lineTop(view: EditorView, line: number): number {
+export function lineTop(view: EditorView, line: number): number {
   const doc = view.state.doc;
   if (line < doc.lines) return view.lineBlockAt(doc.line(line + 1).from).top;
   return view.lineBlockAt(doc.length).bottom;

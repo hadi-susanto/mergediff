@@ -131,8 +131,9 @@ export function renderMerge(input: MergeInput, backend: MergeBackend): Rendered 
     if (spec) result.view.dispatch(spec);
     result.view.focus();
   };
-  const localStrip = new ButtonStrip("local", localPane.view, onAction);
-  const remoteStrip = new ButtonStrip("remote", remotePane.view, onAction);
+  // Created once the Result editor exists (they draw connectors to it).
+  let localStrip: ButtonStrip | null = null;
+  let remoteStrip: ButtonStrip | null = null;
 
   /** Moves the cursor to the previous / next change or conflict. */
   const goTo = (kind: "change" | "conflict", dir: Direction) => {
@@ -187,14 +188,18 @@ export function renderMerge(input: MergeInput, backend: MergeBackend): Rendered 
 
   const refresh = (tracked: readonly Tracked[]) => {
     toolbar.update(tracked);
-    localStrip.update(tracked);
-    remoteStrip.update(tracked);
+    localStrip?.update(tracked);
+    remoteStrip?.update(tracked);
   };
 
   let sync: ScrollSync | null = null;
   const onResultUpdate = (u: ViewUpdate) => {
     const before = u.startState.field(chunkField);
     const after = u.state.field(chunkField);
+    if (u.docChanged || u.geometryChanged || u.viewportChanged) {
+      localStrip?.schedule();
+      remoteStrip?.schedule();
+    }
     if (u.docChanged || before !== after) {
       sync?.invalidate();
       // Keep the side panes aligned with the result while it changes.
@@ -212,6 +217,9 @@ export function renderMerge(input: MergeInput, backend: MergeBackend): Rendered 
     EditorView.updateListener.of(onResultUpdate),
   ]);
 
+  localStrip = new ButtonStrip("local", localPane.view, result.view, onAction);
+  remoteStrip = new ButtonStrip("remote", remotePane.view, result.view, onAction);
+
   const panes = document.getElementById("panes")!;
   panes.classList.add("panes-3");
   panes.append(localPane.root, localStrip.root, result.root, remoteStrip.root, remotePane.root);
@@ -222,8 +230,8 @@ export function renderMerge(input: MergeInput, backend: MergeBackend): Rendered 
   );
   window.addEventListener("resize", () => {
     sync?.alignTo(1);
-    localStrip.schedule();
-    remoteStrip.schedule();
+    localStrip?.schedule();
+    remoteStrip?.schedule();
   });
 
   installShortcuts({
