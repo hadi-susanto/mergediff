@@ -40,12 +40,20 @@ def wait(timeout=30):
     sys.exit("mergediff window not found")
 
 
-def click(app, spec):
+def click(app, spec, timeout=10):
+    # The UI may still be settling (e.g. strip buttons are drawn on the next
+    # animation frame, later on a cold first start), so wait for the button
+    # to exist and be enabled instead of failing at once.
     name, _, nth = spec.partition("#")
-    matches = [b for b in buttons(app) if b.name == name]
     n = int(nth or 0)
-    if n >= len(matches):
-        sys.exit(f"button {name!r}#{n} not found; have {[b.name for b in buttons(app)]}")
+    end = time.time() + timeout
+    while True:
+        matches = [b for b in buttons(app) if b.name == name]
+        if n < len(matches) and matches[n].getState().contains(pyatspi.STATE_SENSITIVE):
+            break
+        if time.time() > end:
+            sys.exit(f"button {name!r}#{n} not found or disabled; have {[b.name for b in buttons(app)]}")
+        time.sleep(0.2)
     matches[n].queryAction().doAction(0)
     time.sleep(0.4)
 

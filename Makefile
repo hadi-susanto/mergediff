@@ -31,6 +31,11 @@ dev: ## Run with hot reload on sample files (override with ARGS="...")
 
 build: ## Build the production binary into bin/ with the version embedded
 	$(WAILS3) build EXTRA_LDFLAGS="$(LDFLAGS)"
+	@# The binary embeds frontend/dist; without index.html the window is blank.
+	@test -f frontend/dist/index.html || { \
+		echo "build: frontend/dist/index.html is missing, so the binary has no UI."; \
+		echo "       Run 'make clean' (it also resets Wails' task cache in .task/) and build again."; \
+		exit 1; }
 
 test: ## Full test from scratch: clean, then check (uncached Go tests), then e2e
 	$(MAKE) clean
@@ -61,6 +66,6 @@ e2e: build ## Drive the real window end to end (Linux/X11 only; see scripts/e2e/
 version: ## Print the version string a build would embed
 	@echo "$(VERSION_DATE) ($(COMMIT)$(DIRTY))"
 
-clean: ## Remove build output (bin/, built frontend files)
-	rm -rf bin
+clean: ## Remove build output (bin/, built frontend files, Wails' task cache)
+	rm -rf bin .task
 	find frontend/dist -mindepth 1 ! -name .gitkeep -exec rm -rf {} +

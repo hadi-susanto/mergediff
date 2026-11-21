@@ -205,7 +205,7 @@ Required targets (each with a one-line `## description` shown by `make help`):
 - `help` (default) — list targets
 - `deps` — `go mod download`, `npm ci` in `frontend/`, `wails3 doctor`
 - `dev` — `wails3 dev`
-- `build` — `wails3 build EXTRA_LDFLAGS="$(LDFLAGS)"` (output `bin/mergediff`)
+- `build` — `wails3 build EXTRA_LDFLAGS="$(LDFLAGS)"` (output `bin/mergediff`), then fail if `frontend/dist/index.html` is missing (the binary would have no UI)
 - `test` — full test from scratch: `clean`, then `check` with uncached Go tests (`GOTESTFLAGS=-count=1`), then `e2e`. Needs the e2e prerequisites; where there is no display (CI), use `check`.
 - `test-backend` — `go test $(GOTESTFLAGS) ./...`
 - `vet` — `go vet ./...` and `gofmt -l` (fail if any file listed)
@@ -214,7 +214,7 @@ Required targets (each with a one-line `## description` shown by `make help`):
 - `check` — `vet`, `typecheck`, `test-backend`, `test-frontend`
 - `e2e` — `build`, then `scripts/e2e/run.sh` (Linux/X11 only; not part of `check`)
 - `version` — print the version string the build would embed
-- `clean` — remove `bin/` and built files in `frontend/dist` (keep `.gitkeep`)
+- `clean` — remove `bin/`, built files in `frontend/dist` (keep `.gitkeep`) and Wails' task cache `.task/`. The cache must go too: its checksums would otherwise call the frontend build up to date (the committed `dist/.gitkeep` satisfies its output check) and an empty `dist` would be embedded.
 - `release` — create and push today's tag. It must, in order, and stop at the first failure:
   1. confirm the current branch is `main`
   2. confirm the working tree is clean: `git status --porcelain` is empty (no `-dirty`; untracked files also fail this step, and the message lists them)
