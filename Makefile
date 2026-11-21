@@ -94,15 +94,15 @@ release-preflight:
 	remote_main="$$(git rev-parse --verify --quiet origin/main)" || fail "origin/main does not exist; push main first"; \
 	[ "$$local_main" = "$$remote_main" ] || fail "local main ($$(git rev-parse --short=7 main)) differs from origin/main ($$(git rev-parse --short=7 origin/main)); push or pull first"; \
 	echo "ok: main equals origin/main"; \
-	if git rev-parse --verify --quiet "refs/tags/$(TAG)" >/dev/null; then \
-		fail "tag $(TAG) already exists locally (one release per day; existing tags are never moved)"; \
-	fi; \
 	rc=0; git ls-remote --exit-code --tags origin "refs/tags/$(TAG)" >/dev/null || rc=$$?; \
 	case $$rc in \
 		0) fail "tag $(TAG) already exists on origin (one release per day; existing tags are never moved)";; \
 		2) ;; \
 		*) fail "could not list tags on origin (git ls-remote exit $$rc)";; \
 	esac; \
+	if git rev-parse --verify --quiet "refs/tags/$(TAG)" >/dev/null; then \
+		fail "tag $(TAG) already exists locally (one release per day; existing tags are never moved)"; \
+	fi; \
 	echo "ok: tag $(TAG) is free"
 	$(MAKE) check
 	@echo "ok: make check passed"
