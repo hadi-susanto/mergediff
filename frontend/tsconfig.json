@@ -26,8 +26,5 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
   },
-  "include": ["src", "bindings"],
-  // Tests run under node --test (type stripping); type-checking them would
-  // need @types/node.
-  "exclude": ["src/**/*.test.ts"]
+  "include": ["src", "bindings"]
 }
