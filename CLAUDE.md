@@ -206,11 +206,12 @@ Required targets (each with a one-line `## description` shown by `make help`):
 - `deps` — `go mod download`, `npm ci` in `frontend/`, `wails3 doctor`
 - `dev` — `wails3 dev`
 - `build` — `wails3 build EXTRA_LDFLAGS="$(LDFLAGS)"` (output `bin/mergediff`)
-- `test` — `go test ./...`
+- `test` — full test from scratch: `clean`, then `check` with uncached Go tests (`GOTESTFLAGS=-count=1`), then `e2e`. Needs the e2e prerequisites; where there is no display (CI), use `check`.
+- `test-backend` — `go test $(GOTESTFLAGS) ./...`
 - `vet` — `go vet ./...` and `gofmt -l` (fail if any file listed)
 - `typecheck` — `npx tsc --noEmit` in `frontend/`
 - `test-frontend` — `node --test` on `frontend/src/**/*.test.ts`
-- `check` — `vet`, `typecheck`, `test`, `test-frontend`
+- `check` — `vet`, `typecheck`, `test-backend`, `test-frontend`
 - `e2e` — `build`, then `scripts/e2e/run.sh` (Linux/X11 only; not part of `check`)
 - `version` — print the version string the build would embed
 - `clean` — remove `bin/` and built files in `frontend/dist` (keep `.gitkeep`)
@@ -484,7 +485,8 @@ Note: the Makefile's `build`, `test`, `check` and `version` targets are useful e
 ```
 make dev                 # run with hot reload
 make build               # production binary in bin/
-make check               # vet + gofmt + type-check + tests
+make check               # vet + gofmt + type-check + Go and frontend tests
+make test                # clean, check (uncached), then e2e — the full run
 make version             # show the version string that would be embedded
 make release-dry-run     # verify everything is ready for today's release
 make release             # tag vYYYY-MM-DD and push → triggers the release workflow

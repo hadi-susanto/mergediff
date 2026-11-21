@@ -14,7 +14,7 @@ WAILS3 ?= wails3
 ARGS ?= testdata/dev/local.go testdata/dev/remote.go
 
 .DEFAULT_GOAL := help
-.PHONY: help deps dev build test test-frontend vet typecheck check e2e version clean
+.PHONY: help deps dev build test test-backend test-frontend vet typecheck check e2e version clean
 
 help: ## List targets
 	@echo "Usage: make <target>"
@@ -32,8 +32,13 @@ dev: ## Run with hot reload on sample files (override with ARGS="...")
 build: ## Build the production binary into bin/ with the version embedded
 	$(WAILS3) build EXTRA_LDFLAGS="$(LDFLAGS)"
 
-test: ## Run Go tests
-	go test ./...
+test: ## Full test from scratch: clean, then check (uncached Go tests), then e2e
+	$(MAKE) clean
+	$(MAKE) check GOTESTFLAGS=-count=1
+	$(MAKE) e2e
+
+test-backend: ## Run Go tests (GOTESTFLAGS=-count=1 to skip the cache)
+	go test $(GOTESTFLAGS) ./...
 
 vet: ## Run go vet and fail if any Go file is not gofmt-formatted
 	go vet ./...
@@ -48,7 +53,7 @@ typecheck: ## Type-check the frontend
 test-frontend: ## Run frontend logic tests (node --test)
 	cd frontend && node --test src/*.test.ts
 
-check: vet typecheck test test-frontend ## Run vet, gofmt check, type-check, Go and frontend tests
+check: vet typecheck test-backend test-frontend ## Run vet, gofmt check, type-check, Go and frontend tests
 
 e2e: build ## Drive the real window end to end (Linux/X11 only; see scripts/e2e/README.md)
 	scripts/e2e/run.sh
