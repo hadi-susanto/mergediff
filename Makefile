@@ -14,12 +14,12 @@ WAILS3 ?= wails3
 ARGS ?= testdata/dev/local.go testdata/dev/remote.go
 
 .DEFAULT_GOAL := help
-.PHONY: help deps dev build test test-frontend vet typecheck check version clean
+.PHONY: help deps dev build test test-frontend vet typecheck check e2e version clean
 
 help: ## List targets
 	@echo "Usage: make <target>"
 	@echo
-	@awk 'BEGIN { FS = ":.*## " } /^[a-zA-Z_-]+:.*## / { printf "  %-14s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	@awk 'BEGIN { FS = ":.*## " } /^[a-zA-Z0-9_-]+:.*## / { printf "  %-14s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 deps: ## Download Go modules, install frontend packages, check the Wails setup
 	go mod download
@@ -49,6 +49,9 @@ test-frontend: ## Run frontend logic tests (node --test)
 	cd frontend && node --test src/*.test.ts
 
 check: vet typecheck test test-frontend ## Run vet, gofmt check, type-check, Go and frontend tests
+
+e2e: build ## Drive the real window end to end (Linux/X11 only; see scripts/e2e/README.md)
+	scripts/e2e/run.sh
 
 version: ## Print the version string a build would embed
 	@echo "$(VERSION_DATE) ($(COMMIT)$(DIRTY))"

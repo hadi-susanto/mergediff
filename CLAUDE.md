@@ -9,6 +9,7 @@ Build **mergediff**: a lightweight, cross-platform, open-source **3-way merge** 
 - **Always use the Task tool to track progress.** At the start of each phase, break it into tasks; mark each task in progress when you start it and completed when it is done and verified. Never work on something that is not tracked as a task.
 - Work **one phase at a time** (see "Phases"). Do not start the next phase until the current phase's acceptance criteria are met and all tests pass. At the end of each phase, stop and give a short summary of what was done and anything left open.
 - Ask before adding any dependency not listed under "Stack".
+- Adding tests is pre-approved and expected: when behaviour changes, add or extend Go tests, frontend `node --test` tests and `scripts/e2e` checks without asking, so dependency upgrades that change behaviour are caught. (New test *dependencies* still need approval.)
 - Before using a third-party library, check its current API (docs or source) rather than guessing.
 - Never edit generated files (`frontend/bindings/`, `frontend/dist/`, `bin/`).
 - Keep code formatted (`gofmt`, Prettier defaults) and free of vet / type errors.
@@ -32,7 +33,8 @@ Build **mergediff**: a lightweight, cross-platform, open-source **3-way merge** 
   experimental in v3.1.0 and not used; revisit when Wails marks it stable.
 - **Frontend:** Vite + TypeScript 5.x, **no UI framework** (vanilla TS)
 - **Editor:** CodeMirror 6 (`@codemirror/state`, `@codemirror/view`, `@codemirror/language`, `@codemirror/commands`, plus language packages for syntax highlighting). `@codemirror/merge` may be used for the 2-way view or as reference, but the 3-pane merge view is custom.
-- **Frontend tests:** Node's built-in runner (`node --test`, Node 24 type stripping), no test framework dependency. Logic worth testing (chunk tracking, apply/undo) lives in DOM-free modules that import each other with explicit `.ts` extensions and use no TypeScript enums (Node only strips types); they may import types, not values, from `frontend/bindings/`.
+- **Frontend tests:** Node's built-in runner (`node --test`, Node 24 type stripping), no test framework dependency. Logic worth testing (chunk tracking, apply/undo) lives in DOM-free modules that import each other with explicit `.ts` extensions and use no TypeScript enums (Node only strips types); they may import types, not values, from `frontend/bindings/`. `@types/node` (pinned to Node 24's major) lets `tsc` type-check the test files.
+- **End-to-end tests:** `scripts/e2e/` drives the real window (Linux/X11 only) through AT-SPI (`python3-pyatspi`), XTest (`python3-xlib`) and `wmctrl`: Git mergetool runs, exit codes, file bytes, shortcuts and dialogs. Run with `make e2e`; not part of `make check` or CI (no display). See `scripts/e2e/README.md`.
 - **Line and character diff:** `github.com/sergi/go-diff` (diffmatchpatch). Line diff uses its line mode (`DiffLinesToRunes` + `DiffMainRunes`) with `DiffTimeout = 0` so results are exact (a timeout also enables a non-optimal "half-match" shortcut). `github.com/aymanbagabas/go-udiff` was evaluated and rejected: its LCS search is capped at ~50 edits, after which the rest of the file collapses into one huge hunk.
 
 ## Repository layout
@@ -72,6 +74,7 @@ mergediff/
       toolbar.ts          # Toolbar, navigation, conflict counter, shortcuts
       styles.css
   bin/                    # Build output (gitignored)
+  scripts/e2e/            # End-to-end UI tests (make e2e; Linux/X11)
   .github/workflows/release.yml   # Triggered by pushing a vYYYY-MM-DD tag
   docs/mockups/           # UI design reference (see "Design reference")
     mergediff-mockup-light.png
@@ -208,6 +211,7 @@ Required targets (each with a one-line `## description` shown by `make help`):
 - `typecheck` — `npx tsc --noEmit` in `frontend/`
 - `test-frontend` — `node --test` on `frontend/src/**/*.test.ts`
 - `check` — `vet`, `typecheck`, `test`, `test-frontend`
+- `e2e` — `build`, then `scripts/e2e/run.sh` (Linux/X11 only; not part of `check`)
 - `version` — print the version string the build would embed
 - `clean` — remove `bin/` and built files in `frontend/dist` (keep `.gitkeep`)
 - `release` — create and push today's tag. It must, in order, and stop at the first failure:
