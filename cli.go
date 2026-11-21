@@ -19,7 +19,11 @@ const (
 var usage = `Usage:
   mergediff BASE LOCAL REMOTE -o MERGED [--auto-apply]    3-way merge
   mergediff LEFT RIGHT                                    2-way diff (read-only)
+  mergediff settings [list | get KEY | set KEY VALUE | unset KEY | path]
+                                                          view or change saved settings
   mergediff --help | --version
+
+To compare a file named "settings", write ./settings.
 
 Options:
   -o, --output MERGED   file the merge result is written to (required for a merge)
@@ -57,6 +61,7 @@ const (
 	cmdDiff
 	cmdHelp
 	cmdVersion
+	cmdSettings
 )
 
 // options is the parsed command line.
@@ -71,6 +76,8 @@ type options struct {
 	right     string // diff
 	// settings are --KEY VALUE overrides of registered settings, in order.
 	settings []setting
+	// settingsArgs are the arguments after "mergediff settings".
+	settingsArgs []string
 }
 
 // setting is one key and value from the command line.
@@ -91,6 +98,10 @@ func usagef(format string, args ...any) error {
 // "-o MERGED" last.
 func parseArgs(args []string) (options, error) {
 	var o options
+	if len(args) > 0 && args[0] == "settings" {
+		o.cmd, o.settingsArgs = cmdSettings, args[1:]
+		return o, nil
+	}
 	var paths []string
 	var help, version, haveOutput bool
 	seen := map[string]bool{}

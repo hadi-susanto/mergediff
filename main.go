@@ -51,6 +51,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case cmdVersion:
 		fmt.Fprintf(stdout, "mergediff %s\n", Version())
 		return exitOK
+	case cmdSettings:
+		return runSettings(opts.settingsArgs, stdout, stderr)
 	}
 
 	var sess *session.Session
