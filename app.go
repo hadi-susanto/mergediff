@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hadi-susanto/mergediff/internal/config"
 	"github.com/hadi-susanto/mergediff/internal/diff"
 	"github.com/hadi-susanto/mergediff/internal/session"
 )
@@ -11,7 +12,8 @@ import (
 // App is the Wails service bound to the frontend. Its exported methods are
 // thin adapters over the internal packages.
 type App struct {
-	sess *session.Session
+	sess     *session.Session
+	settings map[string]string // effective settings, keyed by config key
 
 	mu       sync.Mutex
 	exitCode int
@@ -37,6 +39,15 @@ func newApp(sess *session.Session) *App {
 		code = exitCancel
 	}
 	return &App{sess: sess, exitCode: code, quit: func() {}}
+}
+
+// Settings returns the effective settings (config file and command-line
+// flags), keyed by setting key, e.g. "theme": "dark".
+func (a *App) Settings() map[string]string {
+	if a.settings == nil {
+		return config.Defaults().Values()
+	}
+	return a.settings
 }
 
 // LoadSession returns the files, chunks and settings loaded at startup.

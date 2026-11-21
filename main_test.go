@@ -287,3 +287,14 @@ func TestWindowOptions(t *testing.T) {
 		t.Errorf("light: %+v", o)
 	}
 }
+
+func TestAppSettings(t *testing.T) {
+	app := newApp(&session.Session{Mode: session.Diff})
+	if got := app.Settings(); got[config.KeyTheme] != config.ThemeSystem || got[config.KeyWindowState] != config.WindowNormal {
+		t.Errorf("defaults: %v", got)
+	}
+	app.settings = map[string]string{config.KeyTheme: config.ThemeDark}
+	if got := app.Settings(); got[config.KeyTheme] != config.ThemeDark {
+		t.Errorf("set: %v", got)
+	}
+}

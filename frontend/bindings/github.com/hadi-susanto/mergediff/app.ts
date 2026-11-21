@@ -63,6 +63,14 @@ export function Save(result: string): $CancellablePromise<void> {
 }
 
 /**
+ * Settings returns the effective settings (config file and command-line
+ * flags), keyed by setting key, e.g. "theme": "dark".
+ */
+export function Settings(): $CancellablePromise<{ [_ in string]?: string } | null> {
+    return $Call.ByID(163798416);
+}
+
+/**
  * Version returns the build version for the status bar.
  */
 export function Version(): $CancellablePromise<string> {

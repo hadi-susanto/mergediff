@@ -99,6 +99,7 @@ const closeRequestedEvent = "mergediff:close-requested"
 
 func runGUI(sess *session.Session, cfg config.Config) int {
 	app := newApp(sess)
+	app.settings = cfg.Values()
 	wails := application.New(application.Options{
 		Name:        "mergediff",
 		Description: "3-way merge and 2-way diff tool",

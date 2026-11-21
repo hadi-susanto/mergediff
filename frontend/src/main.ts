@@ -12,6 +12,7 @@ import { sliceLines, splitLines, type CharSpan, type MergeChunk } from "./model.
 import { step, type Direction } from "./nav.ts";
 import { createReadOnlyPane, setLanguage, type Pane } from "./panes.ts";
 import { ScrollSync } from "./scrollsync.ts";
+import { installTheme } from "./theme.ts";
 import { changeNavButtons } from "./toolbar.ts";
 import "./styles.css";
 
@@ -147,7 +148,13 @@ function renderDiff(session: Session): Rendered {
   return { status, views: [left.view, right.view] };
 }
 
+/** Sets the "theme" setting; the system theme applies until it is known. */
+const setTheme = installTheme(document.documentElement, window.matchMedia("(prefers-color-scheme: dark)"));
+
 async function main(): Promise<void> {
+  App.Settings()
+    .then((settings) => setTheme(settings?.theme))
+    .catch((err) => console.error("loading settings failed", err));
   let session: Session;
   let version: string;
   try {

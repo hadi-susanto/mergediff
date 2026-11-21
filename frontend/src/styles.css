@@ -1,6 +1,7 @@
-/* Colour tokens. Light theme by default, dark via the system preference. */
+/* Colour tokens. Light by default; dark when theme.ts sets data-theme="dark"
+   (the "theme" setting, or the system preference when it is "system"). */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --chrome-bg: #f4f3ef;
   --chrome-border: #dcdad3;
   --chrome-fg: #3d3d3a;
@@ -40,46 +41,45 @@
   --syn-invalid: #e45649;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --chrome-bg: #262624;
-    --chrome-border: #3a3a37;
-    --chrome-fg: #dcdad3;
-    --chrome-muted: #8e8d86;
-    --editor-bg: #1e1e1c;
-    --editor-fg: #e6e4dd;
-    --gutter-fg: #6b6a64;
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --chrome-bg: #262624;
+  --chrome-border: #3a3a37;
+  --chrome-fg: #dcdad3;
+  --chrome-muted: #8e8d86;
+  --editor-bg: #1e1e1c;
+  --editor-fg: #e6e4dd;
+  --gutter-fg: #6b6a64;
 
-    --added-bg: #1f3a24;
-    --added-strong: #2f6a3a;
-    --modified-bg: #1f2f45;
-    --modified-strong: #2c5a8c;
-    --deleted-bg: #2e2e2c;
-    --deleted-strong: #4a4a46;
-    --conflict-bg: #4a2224;
-    --conflict-strong: #8c3235;
-    --conflict-fg: #f4b4b0;
-    --added-fg: #a9dca3;
+  --added-bg: #1f3a24;
+  --added-strong: #2f6a3a;
+  --modified-bg: #1f2f45;
+  --modified-strong: #2c5a8c;
+  --deleted-bg: #2e2e2c;
+  --deleted-strong: #4a4a46;
+  --conflict-bg: #4a2224;
+  --conflict-strong: #8c3235;
+  --conflict-fg: #f4b4b0;
+  --added-fg: #a9dca3;
 
-    --btn-bg: #2b2b29;
-    --btn-border: #45443f;
-    --btn-primary-bg: #f1efe8;
-    --btn-primary-fg: #1f1f1d;
+  --btn-bg: #2b2b29;
+  --btn-border: #45443f;
+  --btn-primary-bg: #f1efe8;
+  --btn-primary-fg: #1f1f1d;
 
-    --cursor: #e6e4dd;
-    --selection: #3a4a63;
+  --cursor: #e6e4dd;
+  --selection: #3a4a63;
 
-    --syn-keyword: #c678dd;
-    --syn-string: #98c379;
-    --syn-number: #d19a66;
-    --syn-comment: #7f848e;
-    --syn-type: #e5c07b;
-    --syn-function: #61afef;
-    --syn-property: #56b6c2;
-    --syn-tag: #e06c75;
-    --syn-meta: #9a9a94;
-    --syn-invalid: #e06c75;
-  }
+  --syn-keyword: #c678dd;
+  --syn-string: #98c379;
+  --syn-number: #d19a66;
+  --syn-comment: #7f848e;
+  --syn-type: #e5c07b;
+  --syn-function: #61afef;
+  --syn-property: #56b6c2;
+  --syn-tag: #e06c75;
+  --syn-meta: #9a9a94;
+  --syn-invalid: #e06c75;
 }
 
 * {
