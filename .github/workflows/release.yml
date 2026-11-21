@@ -1,0 +1,144 @@
+# Release: triggered only by pushing a vYYYY-MM-DD tag (see `make release`).
+name: release
+
+on:
+  push:
+    tags: ["v[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]"]
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Version from tag
+        run: scripts/ci/version-from-tag.sh "$GITHUB_REF_NAME"
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install GTK and WebKitGTK (the root package uses cgo)
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+      - name: Install frontend packages
+        run: npm ci
+        working-directory: frontend
+      - name: Vet, gofmt, type-check, Go and frontend tests
+        run: make check GOTESTFLAGS=-count=1
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            os: windows
+            arch: amd64
+          - runner: macos-latest
+            os: darwin
+            arch: universal
+          - runner: ubuntu-latest
+            os: linux
+            arch: amd64
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - name: Version from tag
+        run: scripts/ci/version-from-tag.sh "$GITHUB_REF_NAME"
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install GTK and WebKitGTK
+        if: matrix.os == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+      - name: Install make
+        if: matrix.os == 'windows'
+        run: command -v make || choco install make --no-progress -y
+      - name: Install the wails3 CLI (version from go.mod)
+        run: |
+          version=$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
+          go install "github.com/wailsapp/wails/v3/cmd/wails3@$version"
+          echo "$(go env GOPATH)/bin" >>"$GITHUB_PATH"
+      - name: Install frontend packages
+        run: npm ci
+        working-directory: frontend
+      - name: Build
+        run: make build VERSION_DATE="$VERSION_DATE" ${{ matrix.os == 'darwin' && 'UNIVERSAL=1' || '' }}
+      - name: Check the embedded version
+        if: matrix.os == 'linux'
+        run: |
+          got=$(bin/mergediff --version)
+          echo "$got"
+          test "$got" = "mergediff $VERSION_DATE ($COMMIT)"
+      - name: Package
+        run: |
+          name="mergediff_${VERSION_DATE}_${{ matrix.os }}_${{ matrix.arch }}"
+          mkdir -p dist
+          cp LICENSE bin/
+          cd bin
+          case "${{ matrix.os }}" in
+            windows) 7z a "../dist/$name.zip" mergediff.exe LICENSE ;;
+            darwin) zip "../dist/$name.zip" mergediff LICENSE ;;
+            linux) tar -czf "../dist/$name.tar.gz" mergediff LICENSE ;;
+          esac
+          ls -l ../dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mergediff-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the notes list commits since the previous release tag
+      - name: Version from tag
+        run: scripts/ci/version-from-tag.sh "$GITHUB_REF_NAME"
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum -- * >SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Release notes
+        run: |
+          previous=$(git describe --tags --abbrev=0 \
+            --match 'v[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' HEAD^ 2>/dev/null || true)
+          {
+            if [ -n "$previous" ]; then
+              echo "Changes since $previous:"
+              range="$previous..HEAD"
+            else
+              echo "Changes:"
+              range=HEAD
+            fi
+            echo
+            git log --no-merges --format='- %s (%h)' "$range"
+          } >notes.md
+          cat notes.md
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --verify-tag \
+            --title "mergediff $VERSION_DATE ($COMMIT)" \
+            --notes-file notes.md
