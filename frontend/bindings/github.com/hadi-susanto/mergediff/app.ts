@@ -16,6 +16,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as diff$0 from "./internal/diff/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as merge$0 from "./internal/merge/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as session$0 from "./internal/session/models.js";
 
 /**
@@ -30,6 +33,14 @@ export function CharDiff(left: string, right: string): $CancellablePromise<diff$
  */
 export function CloseRequestSeen(): $CancellablePromise<void> {
     return $Call.ByID(763016563);
+}
+
+/**
+ * Compare diffs two texts for the scratch view (mergediff without
+ * arguments). The chunks are like a diff session's.
+ */
+export function Compare(left: string, right: string): $CancellablePromise<merge$0.Chunk[] | null> {
+    return $Call.ByID(2918510540, left, right);
 }
 
 /**

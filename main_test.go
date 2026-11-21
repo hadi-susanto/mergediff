@@ -98,7 +98,7 @@ func TestRunWithoutWindow(t *testing.T) {
 	}{
 		{name: "help", args: []string{"--help"}, code: 0, stdout: "Usage:"},
 		{name: "version", args: []string{"--version"}, code: 0, stdout: "mergediff dev (unknown)\n"},
-		{name: "no args", args: nil, code: 2, stderr: "mergediff: missing file arguments", usageShown: true},
+		{name: "output without paths", args: []string{"-o", "m"}, code: 2, stderr: "need BASE LOCAL REMOTE", usageShown: true},
 		{name: "bad option", args: []string{"a", "b", "--nope"}, code: 2, stderr: "unknown option --nope", usageShown: true},
 		{name: "missing file", args: []string{a, filepath.Join(dir, "missing")}, code: 2, stderr: "mergediff: read RIGHT: "},
 		{name: "binary file", args: []string{bin, a}, code: 2, stderr: "file looks binary"},
@@ -144,6 +144,13 @@ func TestRunOpensWindow(t *testing.T) {
 	}
 	if s := *opened; s.Mode != session.Merge || s.Title != "out.go" {
 		t.Fatalf("merge session = %+v", s)
+	}
+
+	if code := run(nil, &stdout, &stderr); code != 7 {
+		t.Fatalf("scratch exit code %d (stderr %q)", code, stderr.String())
+	}
+	if s := *opened; s.Mode != session.Scratch {
+		t.Fatalf("no args: session = %+v, want scratch", s)
 	}
 }
 
@@ -296,5 +303,16 @@ func TestAppSettings(t *testing.T) {
 	app.settings = map[string]string{config.KeyTheme: config.ThemeDark}
 	if got := app.Settings(); got[config.KeyTheme] != config.ThemeDark {
 		t.Errorf("set: %v", got)
+	}
+}
+
+func TestAppCompare(t *testing.T) {
+	app := newApp(session.NewScratch())
+	chunks, err := app.Compare("a\n", "b\n")
+	if err != nil || len(chunks) != 1 || chunks[0].Kind != "remote" {
+		t.Fatalf("Compare = %+v, %v", chunks, err)
+	}
+	if c := app.code(); c != exitOK {
+		t.Errorf("scratch default exit code %d, want 0", c)
 	}
 }

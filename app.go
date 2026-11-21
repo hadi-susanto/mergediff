@@ -6,6 +6,7 @@ import (
 
 	"github.com/hadi-susanto/mergediff/internal/config"
 	"github.com/hadi-susanto/mergediff/internal/diff"
+	"github.com/hadi-susanto/mergediff/internal/merge"
 	"github.com/hadi-susanto/mergediff/internal/session"
 )
 
@@ -48,6 +49,12 @@ func (a *App) Settings() map[string]string {
 		return config.Defaults().Values()
 	}
 	return a.settings
+}
+
+// Compare diffs two texts for the scratch view (mergediff without
+// arguments). The chunks are like a diff session's.
+func (a *App) Compare(left, right string) ([]merge.Chunk, error) {
+	return session.Compare(left, right)
 }
 
 // LoadSession returns the files, chunks and settings loaded at startup.

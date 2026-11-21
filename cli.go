@@ -19,6 +19,7 @@ const (
 var usage = `Usage:
   mergediff BASE LOCAL REMOTE -o MERGED [--auto-apply]    3-way merge
   mergediff LEFT RIGHT                                    2-way diff (read-only)
+  mergediff                                               scratch diff: paste text into both panes
   mergediff settings [list | get KEY | set KEY VALUE | unset KEY | path]
                                                           view or change saved settings
   mergediff --help | --version
@@ -62,6 +63,7 @@ const (
 	cmdHelp
 	cmdVersion
 	cmdSettings
+	cmdScratch
 )
 
 // options is the parsed command line.
@@ -193,7 +195,10 @@ func parseArgs(args []string) (options, error) {
 		o.cmd = cmdDiff
 		o.left, o.right = paths[0], paths[1]
 	case 0:
-		return o, usagef("missing file arguments")
+		if haveOutput || o.autoApply {
+			return o, usagef("-o and --auto-apply need BASE LOCAL REMOTE")
+		}
+		o.cmd = cmdScratch
 	default:
 		return o, usagef("expected 2 files (diff) or 3 files and -o (merge), got %d", len(paths))
 	}

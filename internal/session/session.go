@@ -19,6 +19,9 @@ type Mode string
 const (
 	Merge Mode = "merge"
 	Diff  Mode = "diff"
+	// Scratch is an editable two-way diff without files: the user pastes
+	// text into both panes and compares it with Compare.
+	Scratch Mode = "scratch"
 )
 
 // ErrNotMerge is returned by Save in diff mode.
@@ -59,7 +62,6 @@ func LoadDiff(left, right string) (*Session, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read RIGHT: %w", err)
 	}
-	ll, rl := textio.SplitLines(l.Text), textio.SplitLines(r.Text)
 	eol := textio.DetectEOL(r, l)
 	return &Session{
 		Mode:     Diff,
@@ -67,7 +69,7 @@ func LoadDiff(left, right string) (*Session, error) {
 		Title:    diffTitle(left, right),
 		Local:    l.Text,
 		Remote:   r.Text,
-		Chunks:   nonNil(merge.Merge(ll, ll, rl)),
+		Chunks:   diffChunks(l.Text, r.Text),
 		Language: Language(right),
 		EOL:      eol.Name(),
 		eol:      eol,
@@ -125,6 +127,40 @@ func (s *Session) Save(result string) error {
 		return fmt.Errorf("write MERGED: %w", err)
 	}
 	return nil
+}
+
+// NewScratch returns an empty scratch session (mergediff without arguments).
+func NewScratch() *Session {
+	return &Session{
+		Mode:   Scratch,
+		Paths:  []string{},
+		Title:  "scratch",
+		Chunks: []merge.Chunk{},
+		EOL:    textio.LF.Name(),
+		eol:    textio.LF,
+	}
+}
+
+// Compare diffs two texts the way a diff session diffs LEFT and RIGHT.
+// CRLF line endings are normalised first, so pasted Windows text compares
+// equal to the same text with LF endings.
+func Compare(left, right string) ([]merge.Chunk, error) {
+	l, err := textio.Decode([]byte(left))
+	if err != nil {
+		return nil, fmt.Errorf("left text: %w", err)
+	}
+	r, err := textio.Decode([]byte(right))
+	if err != nil {
+		return nil, fmt.Errorf("right text: %w", err)
+	}
+	return diffChunks(l.Text, r.Text), nil
+}
+
+// diffChunks compares LEFT and RIGHT (LF text). The chunks are Unchanged or
+// RemoteOnly, with Base ranges equal to Local ranges.
+func diffChunks(left, right string) []merge.Chunk {
+	ll, rl := textio.SplitLines(left), textio.SplitLines(right)
+	return nonNil(merge.Merge(ll, ll, rl))
 }
 
 func diffTitle(left, right string) string {

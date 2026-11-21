@@ -16,6 +16,12 @@ export enum Mode {
 
     Merge = "merge",
     Diff = "diff",
+
+    /**
+     * Scratch is an editable two-way diff without files: the user pastes
+     * text into both panes and compares it with Compare.
+     */
+    Scratch = "scratch",
 };
 
 /**

@@ -28,6 +28,8 @@ func TestParseArgs(t *testing.T) {
 		{"short help wins over paths", []string{"a", "-h"}, options{cmd: cmdHelp}},
 		{"version", []string{"--version"}, options{cmd: cmdVersion}},
 		{"short version", []string{"-v"}, options{cmd: cmdVersion}},
+		{"no args is scratch", nil, options{cmd: cmdScratch}},
+		{"scratch with a theme", []string{"--theme", "dark"}, options{cmd: cmdScratch, settings: []setting{{"theme", "dark"}}}},
 		{"settings subcommand", []string{"settings", "set", "theme", "dark"},
 			options{cmd: cmdSettings, settingsArgs: []string{"set", "theme", "dark"}}},
 		{"settings with --help is the subcommand's", []string{"settings", "--help"},
@@ -59,7 +61,8 @@ func TestParseArgsErrors(t *testing.T) {
 		args []string
 		msg  string // substring of the message
 	}{
-		{"no args", nil, "missing file arguments"},
+		{"output without paths", []string{"-o", "m"}, "-o and --auto-apply need BASE LOCAL REMOTE"},
+		{"auto apply without paths", []string{"--auto-apply"}, "-o and --auto-apply need BASE LOCAL REMOTE"},
 		{"one path", []string{"a"}, "got 1"},
 		{"four paths", []string{"a", "b", "c", "d", "-o", "m"}, "got 4"},
 		{"merge without output", []string{"b", "l", "r"}, "needs -o"},

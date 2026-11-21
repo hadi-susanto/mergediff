@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -197,5 +198,48 @@ func TestLanguage(t *testing.T) {
 		if got := Language(path); got != want {
 			t.Errorf("Language(%q) = %q, want %q", path, got, want)
 		}
+	}
+}
+
+func TestScratchAndCompare(t *testing.T) {
+	s := NewScratch()
+	if s.Mode != Scratch || s.Chunks == nil || s.Paths == nil || s.Local != "" || s.Remote != "" {
+		t.Fatalf("NewScratch = %+v", s)
+	}
+	if err := s.Save("x"); !errors.Is(err, ErrNotMerge) {
+		t.Fatalf("Save in scratch mode: %v", err)
+	}
+
+	chunks, err := Compare("a\nb\nc\n", "a\nB\nc\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []merge.Chunk{
+		{Kind: merge.Unchanged, Base: merge.Range{Start: 0, End: 1}, Local: merge.Range{Start: 0, End: 1}, Remote: merge.Range{Start: 0, End: 1}},
+		{Kind: merge.RemoteOnly, Base: merge.Range{Start: 1, End: 2}, Local: merge.Range{Start: 1, End: 2}, Remote: merge.Range{Start: 1, End: 2}},
+		{Kind: merge.Unchanged, Base: merge.Range{Start: 2, End: 3}, Local: merge.Range{Start: 2, End: 3}, Remote: merge.Range{Start: 2, End: 3}},
+	}
+	if !reflect.DeepEqual(chunks, want) {
+		t.Fatalf("Compare = %+v", chunks)
+	}
+
+	// Pasted CRLF text equals the LF text; empty texts give [] not nil.
+	for _, pair := range [][2]string{{"a\r\nb\r\n", "a\nb\n"}, {"", ""}} {
+		chunks, err := Compare(pair[0], pair[1])
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range chunks {
+			if c.Kind != merge.Unchanged {
+				t.Fatalf("Compare(%q, %q) has a change: %+v", pair[0], pair[1], chunks)
+			}
+		}
+		if chunks == nil {
+			t.Fatal("chunks are nil")
+		}
+	}
+
+	if _, err := Compare("a\x00b", "x"); !errors.Is(err, textio.ErrBinary) {
+		t.Fatalf("NUL text: err = %v", err)
 	}
 }

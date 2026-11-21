@@ -56,10 +56,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	var sess *session.Session
-	if opts.cmd == cmdMerge {
+	switch opts.cmd {
+	case cmdMerge:
 		sess, err = session.LoadMerge(opts.base, opts.local, opts.remote, opts.output, opts.autoApply)
-	} else {
+	case cmdDiff:
 		sess, err = session.LoadDiff(opts.left, opts.right)
+	case cmdScratch:
+		sess = session.NewScratch()
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "mergediff: %v\n", err)
