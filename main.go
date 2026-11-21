@@ -128,12 +128,7 @@ func runGUI(sess *session.Session, cfg config.Config) int {
 	})
 	app.quit = wails.Quit
 
-	window := wails.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:  "mergediff — " + sess.Title,
-		Width:  1400,
-		Height: 900,
-		URL:    "/",
-	})
+	window := wails.Window.NewWithOptions(windowOptions(sess, cfg))
 	// In merge mode the frontend guards the close button, so unsaved edits
 	// are confirmed the same way as Cancel (see App.GuardClose).
 	window.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
@@ -148,4 +143,31 @@ func runGUI(sess *session.Session, cfg config.Config) int {
 		return exitError
 	}
 	return app.code()
+}
+
+// windowOptions configures the main window from the session and settings.
+func windowOptions(sess *session.Session, cfg config.Config) application.WebviewWindowOptions {
+	opts := application.WebviewWindowOptions{
+		Title:  "mergediff — " + sess.Title,
+		Width:  1400,
+		Height: 900,
+		URL:    "/",
+	}
+	if cfg.WindowState() == config.WindowMaximized {
+		opts.StartState = application.WindowStateMaximised
+	}
+	// The page applies the theme itself (data-theme); these make the native
+	// title bar and the first paint match. Linux has no such option: the
+	// GTK title bar follows the system theme.
+	switch cfg.Theme() {
+	case config.ThemeDark:
+		opts.Windows.Theme = application.Dark
+		opts.Mac.Appearance = application.NSAppearanceNameDarkAqua
+		opts.BackgroundColour = application.NewRGB(0x26, 0x26, 0x24) // --chrome-bg, dark
+	case config.ThemeLight:
+		opts.Windows.Theme = application.Light
+		opts.Mac.Appearance = application.NSAppearanceNameAqua
+		opts.BackgroundColour = application.NewRGB(0xf4, 0xf3, 0xef) // --chrome-bg, light
+	}
+	return opts
 }
