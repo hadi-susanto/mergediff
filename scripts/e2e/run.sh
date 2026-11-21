@@ -19,7 +19,7 @@ fi
 [ -x "${MERGEDIFF_BIN:-../../bin/mergediff}" ] || { echo "e2e: build first (make build)" >&2; exit 2; }
 
 status=0
-for script in mergetool.sh shortcuts.sh; do
+for script in mergetool.sh shortcuts.sh perf.sh; do
   echo "### $script"
   bash "$script" || status=1
   echo

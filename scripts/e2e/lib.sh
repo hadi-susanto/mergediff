@@ -1,6 +1,9 @@
 # Shared helpers for the end-to-end scripts. Source it; do not run it.
 # shellcheck shell=bash
 
+# Decimal points in timings regardless of the user's locale.
+export LC_NUMERIC=C
+
 E2E_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(cd "$E2E_DIR/../.." && pwd)
 BIN=${MERGEDIFF_BIN:-$ROOT/bin/mergediff}

@@ -32,6 +32,10 @@ scripts are not part of `make check` or CI, which have no display.
 - `shortcuts.sh` — F7 / Shift+F7, Ctrl+Shift+A and its single-step undo,
   Ctrl+S with and without conflicts, Esc in dialogs and windows, undo not
   touching earlier typing, the diff window
+- `perf.sh` — a 10,000-line merge with ~430 changes: time to interactive,
+  responsiveness right after fast scrolling, typing and "apply all", saving
+- `gen-large.py` — generates that merge (`gen-large.py DIR [LINES]`), also
+  handy for manual checks
 - `lib.sh` — shared helpers (`check`, `ui`, `start_app`, …)
 - `ui.py` — the driver: `wait`, `dump`, `click NAME[#N]`, `key COMBO`,
   `type TEXT`, `scroll X Y N`
