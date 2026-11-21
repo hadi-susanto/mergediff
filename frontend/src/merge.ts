@@ -36,6 +36,11 @@ export interface MergeBackend {
   save(result: string): Promise<void>;
   quit(code: number): void;
   charDiff(left: string, right: string): Promise<CharSpan[]>;
+  /**
+   * Routes the window's close button to handler instead of closing (the
+   * backend's close guard). Called once the view is ready.
+   */
+  guardClose(handler: () => void): void;
 }
 
 export interface MergeInput {
@@ -242,6 +247,12 @@ export function renderMerge(input: MergeInput, backend: MergeBackend): Rendered 
     cancel: () => {
       if (!toolbar.closeMenu()) void actions.cancel();
     },
+  });
+
+  // The window's close button behaves like Cancel: it asks before
+  // discarding edits. Ignored while a dialog is already open.
+  backend.guardClose(() => {
+    if (!document.querySelector("dialog[open]")) void actions.cancel();
   });
 
   const logCharDiffError = (err: unknown) => console.error("character diff failed", err);

@@ -171,3 +171,43 @@ func TestCrashLogName(t *testing.T) {
 		t.Fatalf("crash log name %q", filepath.Base(path))
 	}
 }
+
+func TestCloseGuard(t *testing.T) {
+	app := newApp(&session.Session{Mode: session.Merge})
+	t0 := time.Date(2026, 11, 21, 10, 0, 0, 0, time.UTC)
+
+	if app.interceptClose(t0) {
+		t.Fatal("without the guard the window must close")
+	}
+
+	app.GuardClose(true)
+	if !app.interceptClose(t0) {
+		t.Fatal("guarded: the first close must be intercepted")
+	}
+	// The frontend has not acknowledged yet: a quick second click is still
+	// intercepted (the confirmation may be on its way)...
+	if !app.interceptClose(t0.Add(closeAckTimeout - time.Millisecond)) {
+		t.Fatal("unacknowledged, within the timeout: still intercepted")
+	}
+	// ...but after the timeout the window closes, so it can never get stuck.
+	if app.interceptClose(t0.Add(closeAckTimeout)) {
+		t.Fatal("unacknowledged after the timeout: must close")
+	}
+
+	// Acknowledged requests keep the guard working indefinitely.
+	app.GuardClose(true)
+	for i := 0; i < 3; i++ {
+		now := t0.Add(time.Duration(i) * time.Minute)
+		if !app.interceptClose(now) {
+			t.Fatalf("request %d: acknowledged guard must intercept", i)
+		}
+		app.CloseRequestSeen()
+	}
+
+	// Quit turns the guard off.
+	app.quit = func() {}
+	app.Quit(exitCancel)
+	if app.interceptClose(t0) {
+		t.Fatal("after Quit the window must close")
+	}
+}

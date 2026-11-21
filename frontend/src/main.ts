@@ -1,5 +1,6 @@
 import { Text } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { Events } from "@wailsio/runtime";
 import * as App from "../bindings/github.com/hadi-susanto/mergediff/app";
 import { Mode, type Session } from "../bindings/github.com/hadi-susanto/mergediff/internal/session/models";
 import { diffSegments } from "./alignment.ts";
@@ -13,6 +14,9 @@ import { createReadOnlyPane, setLanguage, type Pane } from "./panes.ts";
 import { ScrollSync } from "./scrollsync.ts";
 import { changeNavButtons } from "./toolbar.ts";
 import "./styles.css";
+
+/** Event the backend emits when the window's close button is used (main.go). */
+const CLOSE_REQUESTED = "mergediff:close-requested";
 
 /** Process exit codes, mirroring cli.go. */
 const EXIT_OK = 0;
@@ -167,7 +171,18 @@ async function main(): Promise<void> {
         initialResult: session.initialResult,
         autoApplied: session.autoApplied,
       },
-      { save: (result) => App.Save(result), quit, charDiff },
+      {
+        save: (result) => App.Save(result),
+        quit,
+        charDiff,
+        guardClose(handler) {
+          Events.On(CLOSE_REQUESTED, () => {
+            App.CloseRequestSeen().catch((err) => console.error("acknowledging close failed", err));
+            handler();
+          });
+          App.GuardClose(true).catch((err) => console.error("guarding close failed", err));
+        },
+      },
     );
   }
   setStatus(session, version, rendered.status);

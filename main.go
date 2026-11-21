@@ -7,8 +7,10 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"github.com/hadi-susanto/mergediff/internal/session"
 )
@@ -63,6 +65,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return startGUI(sess)
 }
 
+// closeRequestedEvent tells the frontend the window's close button was used.
+const closeRequestedEvent = "mergediff:close-requested"
+
 func runGUI(sess *session.Session) int {
 	app := newApp(sess)
 	wails := application.New(application.Options{
@@ -94,11 +99,19 @@ func runGUI(sess *session.Session) int {
 	})
 	app.quit = wails.Quit
 
-	wails.Window.NewWithOptions(application.WebviewWindowOptions{
+	window := wails.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "mergediff — " + sess.Title,
 		Width:  1400,
 		Height: 900,
 		URL:    "/",
+	})
+	// In merge mode the frontend guards the close button, so unsaved edits
+	// are confirmed the same way as Cancel (see App.GuardClose).
+	window.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+		if app.interceptClose(time.Now()) {
+			e.Cancel()
+			wails.Event.Emit(closeRequestedEvent)
+		}
 	})
 
 	if err := wails.Run(); err != nil {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"sync"
+	"time"
 
 	"github.com/hadi-susanto/mergediff/internal/diff"
 	"github.com/hadi-susanto/mergediff/internal/session"
@@ -15,7 +16,18 @@ type App struct {
 	mu       sync.Mutex
 	exitCode int
 	quit     func() // closes the application; set once Wails is created
+
+	// Close guard (see AllowClose): while on, the window's close button asks
+	// the frontend instead of closing. closeAsked is when a request was sent
+	// that the frontend has not acknowledged yet (zero if none).
+	guarded    bool
+	closeAsked time.Time
 }
+
+// closeAckTimeout is how long an unacknowledged close request blocks the
+// next one. After it, closing works even if the frontend has stopped
+// responding, so the window can never get stuck.
+const closeAckTimeout = 2 * time.Second
 
 func newApp(sess *session.Session) *App {
 	// Closing the window without an explicit Quit: a diff ends normally, a
@@ -54,9 +66,45 @@ func (a *App) Quit(code int) {
 	}
 	a.mu.Lock()
 	a.exitCode = code
+	a.guarded = false
 	quit := a.quit
 	a.mu.Unlock()
 	quit()
+}
+
+// GuardClose turns the close guard on or off. The frontend turns it on in
+// merge mode once it listens for close requests.
+func (a *App) GuardClose(on bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.guarded = on
+	a.closeAsked = time.Time{}
+}
+
+// CloseRequestSeen acknowledges a close request: the frontend is handling it.
+func (a *App) CloseRequestSeen() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.closeAsked = time.Time{}
+}
+
+// interceptClose decides what the window's close button does at now: false
+// lets the window close; true means "cancel the close and ask the
+// frontend". An unacknowledged request older than closeAckTimeout lets the
+// next close through.
+func (a *App) interceptClose(now time.Time) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.guarded {
+		return false
+	}
+	if !a.closeAsked.IsZero() && now.Sub(a.closeAsked) >= closeAckTimeout {
+		return false
+	}
+	if a.closeAsked.IsZero() {
+		a.closeAsked = now
+	}
+	return true
 }
 
 // Version returns the build version for the status bar.

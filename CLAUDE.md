@@ -369,7 +369,16 @@ func (a *App) CharDiff(left, right string) []Span // Span is defined in internal
 func (a *App) Save(result string) error // writes MERGED with original line endings
 func (a *App) Quit(code int)            // closes the window, exits with code
 func (a *App) Version() string          // build version for the status bar
+func (a *App) GuardClose(on bool)       // merge mode: route the window's close button to the frontend
+func (a *App) CloseRequestSeen()        // frontend acknowledges a close request
 ```
+
+**Close guard:** in merge mode the frontend calls `GuardClose(true)` once it
+listens for the `mergediff:close-requested` event. The window's close button
+then cancels the close and emits that event, and the frontend runs the
+Cancel flow (confirms if the result was edited). If a request is not
+acknowledged within 2 s, the next close goes through, so the window can never
+get stuck behind a broken frontend.
 
 `Session` lives in `internal/session`. In diff mode `Local` is LEFT, `Remote`
 is RIGHT and `Base` is empty; chunks are `unchanged` or `remote`. Closing the

@@ -60,6 +60,32 @@ check "exit 0" test $RC -eq 0
 EXPECT=$(sed -e 's/builds/returns/' -e 's/"Hello, "/"Hi, "/' -e 's/"world"/"Go"/' testdata/dev/base.go)
 check "saved result" test "$(cat "$WORK/saved.go")" = "$EXPECT"
 
+section "window close button"
+start_app testdata/dev/base.go testdata/dev/local.go testdata/dev/remote.go -o "$WORK/close.go"
+ui wait sleep 1
+wmctrl -c "mergediff — close.go"
+finish_app
+check "merge without edits closes at once (exit 1)" test $RC -eq 1
+start_app testdata/dev/base.go testdata/dev/local.go testdata/dev/remote.go -o "$WORK/close.go"
+ui wait sleep 1 type "edit"
+wmctrl -c "mergediff — close.go"
+sleep 0.5
+check "merge with edits asks before closing" has "Discard"
+ui click "Keep editing"
+check "keep editing leaves the window open" kill -0 "$APP_PID"
+wmctrl -c "mergediff — close.go"
+sleep 0.5
+check "closing again asks again" has "Discard"
+ui click Discard
+finish_app
+check "discard exits 1" test $RC -eq 1
+check "nothing written" test ! -e "$WORK/close.go"
+start_app "$WORK/local.txt" "$WORK/remote.txt"
+ui wait sleep 1
+wmctrl -c "mergediff — local.txt"
+finish_app
+check "diff window closes with exit 0" test $RC -eq 0
+
 section "diff window"
 start_app "$WORK/local.txt" "$WORK/remote.txt"
 ui wait sleep 1

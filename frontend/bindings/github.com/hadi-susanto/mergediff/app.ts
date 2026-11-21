@@ -26,6 +26,21 @@ export function CharDiff(left: string, right: string): $CancellablePromise<diff$
 }
 
 /**
+ * CloseRequestSeen acknowledges a close request: the frontend is handling it.
+ */
+export function CloseRequestSeen(): $CancellablePromise<void> {
+    return $Call.ByID(763016563);
+}
+
+/**
+ * GuardClose turns the close guard on or off. The frontend turns it on in
+ * merge mode once it listens for close requests.
+ */
+export function GuardClose(on: boolean): $CancellablePromise<void> {
+    return $Call.ByID(2770145314, on);
+}
+
+/**
  * LoadSession returns the files, chunks and settings loaded at startup.
  */
 export function LoadSession(): $CancellablePromise<session$0.Session> {
