@@ -8,6 +8,9 @@ Usage: ui.py STEP [STEP ...]
   key COMBO            e.g. ctrl+z, ctrl+s, shift+F7, Escape (XTest)
   type TEXT            type TEXT into the focused widget
   scroll X Y N         move the pointer to screen X,Y and wheel N notches (N<0 = up)
+  clickat X Y          left-click at screen X,Y (XTest), e.g. to focus a pane
+  pixel X Y            print the colour at screen X,Y as #rrggbb
+  find TEXT            wait until some element's text contains TEXT (exit 1 if not)
   sleep SECONDS
 """
 import sys
@@ -15,7 +18,18 @@ import time
 
 import pyatspi
 
-KEYSYMS = {"ctrl": 0xFFE3, "shift": 0xFFE1, "z": 0x7A, "s": 0x73, "a": 0x61, "Escape": 0xFF1B, "F7": 0xFFC4}
+KEYSYMS = {
+    "ctrl": 0xFFE3,
+    "shift": 0xFFE1,
+    "z": 0x7A,
+    "s": 0x73,
+    "a": 0x61,
+    "Escape": 0xFF1B,
+    "F5": 0xFFC2,
+    "F7": 0xFFC4,
+    "Return": 0xFF0D,
+    "End": 0xFF57,
+}
 
 
 def find_app():
@@ -64,11 +78,33 @@ def xdisplay():
     return display.Display()
 
 
+def active_title(d):
+    """Title of the window that has the input focus ("" if unknown)."""
+    root = d.screen().root
+    active = root.get_full_property(d.intern_atom("_NET_ACTIVE_WINDOW"), 0)
+    if not active or not active.value or not active.value[0]:
+        return ""
+    w = d.create_resource_object("window", active.value[0])
+    name = w.get_full_property(d.intern_atom("_NET_WM_NAME"), d.intern_atom("UTF8_STRING"))
+    if name and name.value:
+        return name.value.decode() if isinstance(name.value, bytes) else str(name.value)
+    return w.get_wm_name() or ""
+
+
+def require_focus(d):
+    """Refuses to send input unless a mergediff window is active, so keys
+    and clicks can never land in another application (e.g. a terminal)."""
+    title = active_title(d)
+    if not title.startswith("mergediff —"):
+        sys.exit(f"refusing to send input: the active window is {title!r}, not mergediff")
+
+
 def key(combo):
     from Xlib import X
     from Xlib.ext import xtest
 
     d = xdisplay()
+    require_focus(d)
     codes = [d.keysym_to_keycode(KEYSYMS[p]) for p in combo.split("+")]
     for c in codes:
         xtest.fake_input(d, X.KeyPress, c)
@@ -83,6 +119,7 @@ def scroll(x, y, n):
     from Xlib.ext import xtest
 
     d = xdisplay()
+    require_focus(d)
     xtest.fake_input(d, X.MotionNotify, x=x, y=y)
     d.sync()
     time.sleep(0.1)
@@ -95,7 +132,56 @@ def scroll(x, y, n):
     time.sleep(0.5)
 
 
+def clickat(x, y):
+    from Xlib import X
+    from Xlib.ext import xtest
+
+    d = xdisplay()
+    require_focus(d)
+    xtest.fake_input(d, X.MotionNotify, x=x, y=y)
+    d.sync()
+    time.sleep(0.1)
+    xtest.fake_input(d, X.ButtonPress, 1)
+    xtest.fake_input(d, X.ButtonRelease, 1)
+    d.sync()
+    time.sleep(0.4)
+
+
+def pixel(x, y):
+    from Xlib import X
+
+    d = xdisplay()
+    raw = d.screen().root.get_image(x, y, 1, 1, X.ZPixmap, 0xFFFFFFFF).data
+    b, g, r = raw[0], raw[1], raw[2]  # 32-bit TrueColor: BGRX
+    print(f"#{r:02x}{g:02x}{b:02x}")
+
+
+def texts(node, depth=0):
+    """Yields the text of node and its descendants (accessible name or Text)."""
+    if node is None or depth > 40:
+        return
+    if node.name:
+        yield node.name
+    try:
+        t = node.queryText()
+        yield t.getText(0, -1)
+    except NotImplementedError:
+        pass
+    for child in node:
+        yield from texts(child, depth + 1)
+
+
+def find(app, text, timeout=10):
+    end = time.time() + timeout
+    while time.time() < end:
+        if any(text in t for t in texts(app)):
+            return
+        time.sleep(0.3)
+    sys.exit(f"text {text!r} not found")
+
+
 def type_text(text):
+    require_focus(xdisplay())
     pyatspi.Registry.generateKeyboardEvent(0, text, pyatspi.KEY_STRING)
     time.sleep(0.4)
 
@@ -127,6 +213,15 @@ def main(argv):
         elif step == "scroll":
             scroll(int(argv[i + 1]), int(argv[i + 2]), int(argv[i + 3]))
             i += 3
+        elif step == "clickat":
+            clickat(int(argv[i + 1]), int(argv[i + 2]))
+            i += 2
+        elif step == "pixel":
+            pixel(int(argv[i + 1]), int(argv[i + 2]))
+            i += 2
+        elif step == "find":
+            i += 1
+            find(app or wait(), argv[i])
         elif step == "sleep":
             i += 1
             time.sleep(float(argv[i]))

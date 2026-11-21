@@ -11,6 +11,7 @@ missing=()
 python3 -c 'import pyatspi' 2>/dev/null || missing+=("python3-pyatspi")
 python3 -c 'import Xlib' 2>/dev/null || missing+=("python3-xlib")
 command -v wmctrl >/dev/null || missing+=("wmctrl")
+command -v xprop >/dev/null || missing+=("xprop (x11-utils)")
 command -v git >/dev/null || missing+=("git")
 if [ ${#missing[@]} -gt 0 ]; then
   printf 'e2e: missing %s\n' "${missing[@]}" >&2
@@ -19,7 +20,7 @@ fi
 [ -x "${MERGEDIFF_BIN:-../../bin/mergediff}" ] || { echo "e2e: build first (make build)" >&2; exit 2; }
 
 status=0
-for script in mergetool.sh shortcuts.sh perf.sh; do
+for script in mergetool.sh shortcuts.sh settings.sh scratch.sh perf.sh; do
   echo "### $script"
   bash "$script" || status=1
   echo

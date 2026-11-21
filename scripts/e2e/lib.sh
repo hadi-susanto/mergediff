@@ -10,6 +10,8 @@ BIN=${MERGEDIFF_BIN:-$ROOT/bin/mergediff}
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/mergediff-e2e.XXXXXX")
 APP_PID=
 trap '[ -n "$APP_PID" ] && kill "$APP_PID" 2>/dev/null; rm -rf "$WORK"' EXIT
+# Settings come from a config file of our own, never the user's.
+export XDG_CONFIG_HOME=$WORK/config
 
 # Every app run and UI step is time-limited so a failing step reports FAIL
 # instead of leaving a window open forever.
@@ -43,11 +45,21 @@ state() { ui dump | grep -F "'$1'" | head -1 | sed 's/.*(\(.*\))/\1/'; }
 # has NAME: a button named NAME exists.
 has() { ui dump | grep -qF "'$1'"; }
 
-# focus TITLE: raise the window so XTest key presses reach it.
+# focus TITLE: raise the window so XTest key presses reach it. ui.py
+# refuses to send input while another window is active.
 focus() {
   wmctrl -a "$1"
   sleep 0.3
 }
+
+# geometry TITLE: prints "X Y W H" of the window.
+geometry() { wmctrl -lG | grep -F "$1" | head -1 | awk '{print $3, $4, $5, $6}'; }
+
+# window_id TITLE: prints the X window id.
+window_id() { wmctrl -l | grep -F "$1" | head -1 | awk '{print $1}'; }
+
+# brightness "#rrggbb": prints 0..255 (average of the channels).
+brightness() { printf '%d\n' $(( (16#${1:1:2} + 16#${1:3:2} + 16#${1:5:2}) / 3 )); }
 
 # start_app ARGS...: launch mergediff in the background; sets APP_PID.
 start_app() {
