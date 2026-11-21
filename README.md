@@ -10,7 +10,9 @@ Windows, macOS and Linux that works as a Git `mergetool` and `difftool`.
   conflict inserts both (local first)
 - Line and word-level highlighting, connectors between matching changes,
   chunk-aligned scrolling
-- Syntax highlighting by file extension, light and dark themes following the system
+- Syntax highlighting by file extension; light and dark themes that follow the
+  system or a setting
+- A scratch mode for comparing pasted text (`mergediff` without arguments)
 - Keeps the file's line endings (LF / CRLF) and trailing newline
 - Handles files of 10,000+ lines without lag
 
@@ -68,8 +70,13 @@ On macOS, `make build UNIVERSAL=1` builds one binary for arm64 and amd64.
 ```
 mergediff BASE LOCAL REMOTE -o MERGED [--auto-apply]   3-way merge
 mergediff LEFT RIGHT                                    2-way diff (read-only)
+mergediff                                               scratch diff of pasted text
+mergediff settings [list | get KEY | set KEY VALUE | unset KEY | path]
 mergediff --help | --version
 ```
+
+Any window can also take `--theme system|light|dark` and
+`--window-state normal|maximized` (see [Settings](#settings)).
 
 - **Merge:** the Result pane starts with the BASE text. Apply changes with the
   gutter buttons, or all non-conflicting ones with *✦ Apply non-conflicting
@@ -77,6 +84,10 @@ mergediff --help | --version
   them at startup. Conflicts always start as the base text, and you can edit
   the Result freely. *Save* writes MERGED.
 - **Diff:** two read-only panes with the differences highlighted.
+- **Scratch:** started without arguments, mergediff opens two empty, editable
+  panes. Paste or type text into both and press *⟳ Refresh* (`F5` or
+  `Ctrl+Enter`) to compare them. After an edit the highlights are cleared
+  until the next refresh.
 
 Files must be UTF-8 text; binary files and invalid UTF-8 are rejected. A
 missing BASE (Git's add/add conflicts) is treated as empty.
@@ -85,9 +96,9 @@ Exit codes:
 
 | Code | Meaning |
 |---|---|
-| `0` | merge saved with all conflicts resolved, or the diff window closed |
+| `0` | merge saved with all conflicts resolved, the diff or scratch window closed, or a `settings` command succeeded |
 | `1` | cancelled, or closed with unresolved conflicts or unsaved changes |
-| `2` | usage or I/O error (message on stderr) |
+| `2` | usage, I/O or config file error (message on stderr) |
 
 Keyboard shortcuts (Cmd instead of Ctrl on macOS):
 
@@ -97,7 +108,47 @@ Keyboard shortcuts (Cmd instead of Ctrl on macOS):
 | `F7` / `Shift+F7` | next / previous change |
 | `Ctrl+Shift+A` | apply all non-conflicting changes |
 | `Ctrl+Z` | undo (an "apply all" is one step) |
-| `Esc` | cancel (asks first if the result was edited) |
+| `Esc` | cancel (asks first if the result was edited); closes a diff, not a scratch window |
+| `F5` / `Ctrl+Enter` | refresh the comparison (scratch mode) |
+
+## Settings
+
+Settings live in a TOML file. Run `mergediff settings path` to find it:
+
+| OS | Config file |
+|---|---|
+| Linux | `~/.config/mergediff/config.toml` (or `$XDG_CONFIG_HOME/mergediff/config.toml`) |
+| macOS | `~/Library/Application Support/mergediff/config.toml` |
+| Windows | `%AppData%\mergediff\config.toml` |
+
+| Key | Values | Default | Meaning |
+|---|---|---|---|
+| `theme` | `system`, `light`, `dark` | `system` | colour theme; `system` follows the OS light/dark setting |
+| `window-state` | `normal`, `maximized` | `normal` | window state at startup |
+
+```toml
+# ~/.config/mergediff/config.toml
+theme = "dark"
+window-state = "maximized"
+```
+
+Edit the file by hand, or from the command line. Comments and other lines
+are kept:
+
+```sh
+mergediff settings                       # list: value, where it comes from, allowed values
+mergediff settings set theme dark
+mergediff settings get theme
+mergediff settings unset theme           # back to the default
+```
+
+A command-line flag overrides the file for one run, e.g.
+`mergediff --theme light a.txt b.txt`. A file with an unknown key or an
+invalid value is an error (exit `2`, naming the file), so typos don't go
+unnoticed. On Linux the window's title bar keeps the system theme; the
+content follows the setting.
+
+To compare a file literally named `settings`, write `./settings`.
 
 ## Git configuration
 
