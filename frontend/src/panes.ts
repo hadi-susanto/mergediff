@@ -31,6 +31,10 @@ export async function setLanguage(views: readonly EditorView[], id: string): Pro
 // "\r", and saving would turn it into "\n".
 const lfOnly = EditorState.lineSeparator.of("\n");
 
+// Pasted or dropped CRLF text becomes LF like the rest of the document;
+// lfOnly would otherwise keep each "\r" as a character.
+const crlfPaste = EditorView.clipboardInputFilter.of((text) => text.replace(/\r\n/g, "\n"));
+
 function paneShell(title: string, tooltip: string): { root: HTMLElement; host: HTMLElement } {
   const root = document.createElement("section");
   root.className = "pane";
@@ -101,7 +105,7 @@ export function createEditablePane(title: string, tooltip: string, text: string,
     parent: host,
     state: EditorState.create({
       doc: text,
-      extensions: [...common(), history(), singleUndo(), keymap.of(defaultKeymap), ...extensions],
+      extensions: [...common(), history(), singleUndo(), keymap.of(defaultKeymap), crlfPaste, ...extensions],
     }),
   });
   return { root, view };

@@ -1,19 +1,12 @@
-import { Text } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
 import { Events } from "@wailsio/runtime";
 import * as App from "../bindings/github.com/hadi-susanto/mergediff/app";
 import { Mode, type Session } from "../bindings/github.com/hadi-susanto/mergediff/internal/session/models";
-import { diffSegments } from "./alignment.ts";
 import { showError } from "./dialogs.ts";
-import { charMarks, charMarkSet, diffClass, diffHighlight, lineOffset, setCharMarks, type CharMarkInput } from "./highlight.ts";
-import { installShortcuts } from "./keys.ts";
+import { renderDiffView } from "./diffview.ts";
 import { renderMerge, type Rendered } from "./merge.ts";
-import { sliceLines, splitLines, type CharSpan, type MergeChunk } from "./model.ts";
-import { step, type Direction } from "./nav.ts";
-import { createReadOnlyPane, setLanguage, type Pane } from "./panes.ts";
-import { ScrollSync } from "./scrollsync.ts";
+import type { CharSpan, MergeChunk } from "./model.ts";
+import { setLanguage } from "./panes.ts";
 import { installTheme } from "./theme.ts";
-import { changeNavButtons } from "./toolbar.ts";
 import "./styles.css";
 
 /** Event the backend emits when the window's close button is used (main.go). */
@@ -32,10 +25,6 @@ const LANGUAGE_NAMES: Record<string, string> = {
 
 function baseName(path: string): string {
   return path.split(/[\\/]/).pop() || path;
-}
-
-function plural(n: number, word: string): string {
-  return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
 function quit(code: number): void {
@@ -57,97 +46,6 @@ function charDiff(left: string, right: string): Promise<CharSpan[]> {
   return App.CharDiff(left, right).then((spans) => (spans ?? []) as unknown as CharSpan[]);
 }
 
-/** Character marks for a diff: deleted spans on the left, inserted on the right. */
-async function paintDiffCharMarks(chunks: readonly MergeChunk[], left: Pane, right: Pane, session: Session): Promise<void> {
-  const leftLines = splitLines(session.local);
-  const rightLines = splitLines(session.remote);
-  const modified = chunks.filter((c) => c.kind !== "unchanged" && diffClass(c) === "modified");
-  const results = await Promise.all(
-    modified.map((c) => charDiff(sliceLines(leftLines, c.local), sliceLines(rightLines, c.remote))),
-  );
-  const inputs = (pane: Pane, kind: CharSpan["kind"]): CharMarkInput[] =>
-    modified.map((c, i) => ({
-      offset: lineOffset(pane.view.state.doc, (kind === "delete" ? c.local : c.remote).start),
-      spans: results[i],
-      kind,
-      cls: "md-char-modified",
-    }));
-  left.view.dispatch({ effects: setCharMarks.of(charMarkSet(inputs(left, "delete"))) });
-  right.view.dispatch({ effects: setCharMarks.of(charMarkSet(inputs(right, "insert"))) });
-}
-
-function renderDiff(session: Session): Rendered {
-  const chunks = chunksOf(session);
-  const [leftPath = "", rightPath = ""] = session.paths ?? [];
-  const panes = document.getElementById("panes")!;
-  panes.classList.add("panes-2");
-
-  const [left, right] = (
-    [
-      ["left", leftPath, session.local],
-      ["right", rightPath, session.remote],
-    ] as const
-  ).map(([side, path, text]) => {
-    const doc = Text.of(text.split("\n"));
-    const pane = createReadOnlyPane(baseName(path), path, text, [diffHighlight(doc, chunks, side), charMarks]);
-    panes.appendChild(pane.root);
-    return pane;
-  });
-
-  const sync = new ScrollSync([left.view, right.view], () => diffSegments(chunks));
-  window.addEventListener("resize", () => sync.alignTo(1));
-
-  // Navigation steps from the line at the middle of the right pane, or from
-  // the last chunk visited if the user has not scrolled since.
-  const starts = chunks.filter((c) => c.kind !== "unchanged").map((c) => c.remote.start);
-  let visited = -1;
-  let visitedScroll = -1;
-  const go = (dir: Direction) => {
-    const view = right.view;
-    const el = view.scrollDOM;
-    let k: number;
-    if (visited >= 0 && Math.abs(el.scrollTop - visitedScroll) < 1) {
-      k = visited + dir;
-      if (k < 0 || k >= starts.length) return;
-    } else {
-      const middle = el.getBoundingClientRect().top + el.clientHeight / 2 - view.documentTop;
-      const line = view.state.doc.lineAt(view.lineBlockAtHeight(middle).from).number - 1;
-      k = step(starts, line, dir);
-      if (k < 0) return;
-    }
-    const pos = lineOffset(view.state.doc, starts[k]);
-    view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: "center" }) });
-    visited = k;
-    requestAnimationFrame(() => (visitedScroll = el.scrollTop));
-  };
-
-  const toolbarLeft = document.getElementById("toolbar-left")!;
-  const nav = document.createElement("div");
-  nav.className = "btn-group";
-  nav.append(...changeNavButtons(go));
-  for (const b of nav.querySelectorAll("button")) b.disabled = starts.length === 0;
-  toolbarLeft.appendChild(nav);
-
-  const close = document.createElement("button");
-  close.className = "btn btn-primary";
-  close.textContent = "Close";
-  close.title = "Close (Esc)";
-  close.addEventListener("click", () => quit(EXIT_OK));
-  document.getElementById("toolbar-right")!.appendChild(close);
-  installShortcuts({ next: () => go(1), prev: () => go(-1), cancel: () => quit(EXIT_OK) });
-
-  paintDiffCharMarks(chunks, left, right, session).catch((err) => console.error("character diff failed", err));
-
-  const counts = { added: 0, deleted: 0, modified: 0 };
-  for (const c of chunks) if (c.kind !== "unchanged") counts[diffClass(c)]++;
-  const changes = counts.added + counts.deleted + counts.modified;
-  const status =
-    changes === 0
-      ? "No differences"
-      : `${plural(changes, "change")} · ${counts.modified} modified · ${counts.added} added · ${counts.deleted} deleted`;
-  return { status, views: [left.view, right.view] };
-}
-
 /** Sets the "theme" setting; the system theme applies until it is known. */
 const setTheme = installTheme(document.documentElement, window.matchMedia("(prefers-color-scheme: dark)"));
 
@@ -165,8 +63,18 @@ async function main(): Promise<void> {
   }
   document.title = `mergediff — ${session.title}`;
   let rendered: Rendered;
-  if (session.mode === Mode.Diff) {
-    rendered = renderDiff(session);
+  if (session.mode === Mode.Diff || session.mode === Mode.Scratch) {
+    const scratch = session.mode === Mode.Scratch;
+    const [leftPath = "", rightPath = ""] = session.paths ?? [];
+    rendered = renderDiffView({
+      left: scratch ? { title: "Left", tooltip: "", text: "" } : { title: baseName(leftPath), tooltip: leftPath, text: session.local },
+      right: scratch ? { title: "Right", tooltip: "", text: "" } : { title: baseName(rightPath), tooltip: rightPath, text: session.remote },
+      chunks: chunksOf(session),
+      compare: scratch ? (l, r) => App.Compare(l, r).then((c) => (c ?? []) as unknown as MergeChunk[]) : undefined,
+      charDiff,
+      close: () => quit(EXIT_OK),
+      status: (text) => (document.getElementById("status-left")!.textContent = text),
+    });
   } else {
     rendered = renderMerge(
       {

@@ -1,4 +1,4 @@
-import { RangeSetBuilder, StateEffect, StateField, type EditorState, type Range, type Text } from "@codemirror/state";
+import { EditorState, RangeSetBuilder, StateEffect, StateField, type Range, type Text } from "@codemirror/state";
 import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
 import { chunkField, isResolved, type Tracked } from "./chunks.ts";
 import type { CharSpan, LineRange, MergeChunk, Side } from "./model.ts";
@@ -61,13 +61,39 @@ export function diffClass(chunk: MergeChunk): Exclude<ChangeClass, "conflict"> {
   return "modified";
 }
 
-/** A static line-decoration extension for one side of a two-way diff. */
-export function diffHighlight(doc: Text, chunks: readonly MergeChunk[], side: DiffSide) {
+/** Status-bar summary of a two-way diff. */
+export function diffSummary(chunks: readonly MergeChunk[]): string {
+  const counts = { added: 0, deleted: 0, modified: 0 };
+  for (const c of chunks) if (c.kind !== "unchanged") counts[diffClass(c)]++;
+  const changes = counts.added + counts.deleted + counts.modified;
+  if (changes === 0) return "No differences";
+  const word = changes === 1 ? "change" : "changes";
+  return `${changes} ${word} · ${counts.modified} modified · ${counts.added} added · ${counts.deleted} deleted`;
+}
+
+/** Line decorations for one side of a two-way diff. */
+export function diffLineMarks(doc: Text, chunks: readonly MergeChunk[], side: DiffSide): DecorationSet {
   const marks = chunks
     .filter((c) => c.kind !== "unchanged")
     .flatMap((c) => rangeMarks(side === "left" ? c.local : c.remote, doc.lines, `md-${diffClass(c)}`));
-  return EditorView.decorations.of(buildDecorations(doc, marks));
+  return buildDecorations(doc, marks);
 }
+
+/** Replaces a diff pane's line highlights. */
+export const setDiffMarks = StateEffect.define<DecorationSet>();
+
+/**
+ * Line highlights of a diff pane. An edit (scratch mode) clears them: the
+ * chunks no longer describe the text until the next comparison.
+ */
+export const diffMarks = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(value, tr) {
+    for (const e of tr.effects) if (e.is(setDiffMarks)) return e.value;
+    return tr.docChanged ? Decoration.none : value;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
 
 // --- three-way merge --------------------------------------------------------
 
@@ -135,6 +161,11 @@ export const charMarks = StateField.define<DecorationSet>({
   },
   provide: (field) => EditorView.decorations.from(field),
 });
+
+/** Clears a pane's character marks on every edit (scratch mode). */
+export const clearCharMarksOnEdit = EditorState.transactionExtender.of((tr) =>
+  tr.docChanged ? { effects: setCharMarks.of(Decoration.none) } : null,
+);
 
 /** A changed text inside a document: where it starts and its spans. */
 export interface CharMarkInput {
