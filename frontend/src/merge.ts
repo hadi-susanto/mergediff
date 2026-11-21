@@ -86,8 +86,16 @@ async function paintCharMarks(
   pane.view.dispatch({ effects: setCharMarks.of(charMarkSet(inputs)) });
 }
 
-/** Builds the three-pane merge view. Returns the static status-bar text. */
-export function renderMerge(input: MergeInput, backend: MergeBackend): string {
+/** What a rendered view hands back to main. */
+export interface Rendered {
+  /** Static status-bar text. */
+  status: string;
+  /** The editors, e.g. for applying the language. */
+  views: EditorView[];
+}
+
+/** Builds the three-pane merge view. */
+export function renderMerge(input: MergeInput, backend: MergeBackend): Rendered {
   const [, localPath = "", remotePath = "", mergedPath = ""] = input.paths;
   const init = initialResult(input.chunks, input.base, input.local, input.remote, input.autoApplied);
   if (init.doc !== input.initialResult) {
@@ -245,7 +253,9 @@ export function renderMerge(input: MergeInput, backend: MergeBackend): string {
   }
   const nonConflicting = local + remote + both;
   const changes = nonConflicting + conflicts;
-  return changes === 0
-    ? "No changes"
-    : `${plural(changes, "change")} · ${nonConflicting} non-conflicting · ${plural(conflicts, "conflict")}`;
+  const status =
+    changes === 0
+      ? "No changes"
+      : `${plural(changes, "change")} · ${nonConflicting} non-conflicting · ${plural(conflicts, "conflict")}`;
+  return { status, views: [localPane.view, result.view, remotePane.view] };
 }

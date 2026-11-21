@@ -6,10 +6,10 @@ import { diffSegments } from "./alignment.ts";
 import { showError } from "./dialogs.ts";
 import { charMarks, charMarkSet, diffClass, diffHighlight, lineOffset, setCharMarks, type CharMarkInput } from "./highlight.ts";
 import { installShortcuts } from "./keys.ts";
-import { renderMerge } from "./merge.ts";
+import { renderMerge, type Rendered } from "./merge.ts";
 import { sliceLines, splitLines, type CharSpan, type MergeChunk } from "./model.ts";
 import { step, type Direction } from "./nav.ts";
-import { createReadOnlyPane, type Pane } from "./panes.ts";
+import { createReadOnlyPane, setLanguage, type Pane } from "./panes.ts";
 import { ScrollSync } from "./scrollsync.ts";
 import { changeNavButtons } from "./toolbar.ts";
 import "./styles.css";
@@ -71,7 +71,7 @@ async function paintDiffCharMarks(chunks: readonly MergeChunk[], left: Pane, rig
   right.view.dispatch({ effects: setCharMarks.of(charMarkSet(inputs(right, "insert"))) });
 }
 
-function renderDiff(session: Session): string {
+function renderDiff(session: Session): Rendered {
   const chunks = chunksOf(session);
   const [leftPath = "", rightPath = ""] = session.paths ?? [];
   const panes = document.getElementById("panes")!;
@@ -136,9 +136,11 @@ function renderDiff(session: Session): string {
   const counts = { added: 0, deleted: 0, modified: 0 };
   for (const c of chunks) if (c.kind !== "unchanged") counts[diffClass(c)]++;
   const changes = counts.added + counts.deleted + counts.modified;
-  return changes === 0
-    ? "No differences"
-    : `${plural(changes, "change")} · ${counts.modified} modified · ${counts.added} added · ${counts.deleted} deleted`;
+  const status =
+    changes === 0
+      ? "No differences"
+      : `${plural(changes, "change")} · ${counts.modified} modified · ${counts.added} added · ${counts.deleted} deleted`;
+  return { status, views: [left.view, right.view] };
 }
 
 async function main(): Promise<void> {
@@ -151,11 +153,11 @@ async function main(): Promise<void> {
     return;
   }
   document.title = `mergediff — ${session.title}`;
-  let status: string;
+  let rendered: Rendered;
   if (session.mode === Mode.Diff) {
-    status = renderDiff(session);
+    rendered = renderDiff(session);
   } else {
-    status = renderMerge(
+    rendered = renderMerge(
       {
         paths: session.paths ?? [],
         base: session.base,
@@ -168,7 +170,8 @@ async function main(): Promise<void> {
       { save: (result) => App.Save(result), quit, charDiff },
     );
   }
-  setStatus(session, version, status);
+  setStatus(session, version, rendered.status);
+  setLanguage(rendered.views, session.language).catch((err) => console.error("loading the language failed", err));
 }
 
 void main();

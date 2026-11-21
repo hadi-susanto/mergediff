@@ -1,11 +1,30 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { EditorState, Prec, type Extension } from "@codemirror/state";
+import { Compartment, EditorState, Prec, type Extension } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers, type Command, type KeyBinding } from "@codemirror/view";
+import { loadLanguage, syntaxColours } from "./languages.ts";
 
 /** A titled editor pane. */
 export interface Pane {
   root: HTMLElement;
   view: EditorView;
+}
+
+/** Holds each editor's language; filled in once the parser has loaded. */
+const languageSlot = new Compartment();
+
+/** Extensions every pane shares. */
+function common(): Extension[] {
+  return [lineNumbers(), lfOnly, syntaxColours, languageSlot.of([])];
+}
+
+/**
+ * Loads the language for id and applies it to every view. Unknown ids and
+ * load failures leave the panes as plain text.
+ */
+export async function setLanguage(views: readonly EditorView[], id: string): Promise<void> {
+  const ext = await loadLanguage(id);
+  if (!ext) return;
+  for (const view of views) view.dispatch({ effects: languageSlot.reconfigure(ext) });
 }
 
 // Only "\n" separates lines. CodeMirror would otherwise also split on a lone
@@ -38,7 +57,7 @@ export function createReadOnlyPane(title: string, tooltip: string, text: string,
     parent: host,
     state: EditorState.create({
       doc: text,
-      extensions: [lineNumbers(), lfOnly, EditorState.readOnly.of(true), EditorView.editable.of(false), ...extensions],
+      extensions: [...common(), EditorState.readOnly.of(true), EditorView.editable.of(false), ...extensions],
     }),
   });
   return { root, view };
@@ -82,7 +101,7 @@ export function createEditablePane(title: string, tooltip: string, text: string,
     parent: host,
     state: EditorState.create({
       doc: text,
-      extensions: [lineNumbers(), lfOnly, history(), singleUndo(), keymap.of(defaultKeymap), ...extensions],
+      extensions: [...common(), history(), singleUndo(), keymap.of(defaultKeymap), ...extensions],
     }),
   });
   return { root, view };
