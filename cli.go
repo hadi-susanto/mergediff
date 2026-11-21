@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/hadi-susanto/mergediff/internal/config"
 )
 
 // Process exit codes.
@@ -13,8 +15,9 @@ const (
 	exitError  = 2 // usage or I/O error
 )
 
-const usage = `Usage:
-  mergediff BASE LOCAL REMOTE -o MERGED [--auto-apply]   3-way merge
+// usage is the help text; the settings flags come from config.Registry.
+var usage = `Usage:
+  mergediff BASE LOCAL REMOTE -o MERGED [--auto-apply]    3-way merge
   mergediff LEFT RIGHT                                    2-way diff (read-only)
   mergediff --help | --version
 
@@ -25,11 +28,26 @@ Options:
   -v, --version         print the version
       --                end of options (for paths starting with "-")
 
+` + settingsFlagsUsage() + `
 Exit codes:
   0  merge saved with all conflicts resolved, or diff window closed
   1  cancelled, or closed with unresolved conflicts or unsaved changes
   2  usage or I/O error
 `
+
+// settingsFlagsUsage describes the --KEY VALUE flags of the registered settings.
+func settingsFlagsUsage() string {
+	var b strings.Builder
+	b.WriteString("Settings (override the config file for this run):\n")
+	for _, s := range config.Registry {
+		if !s.Flag {
+			continue
+		}
+		fmt.Fprintf(&b, "      --%s %s\n", s.Key, strings.Join(s.Values, "|"))
+		fmt.Fprintf(&b, "                        %s (default %s)\n", s.Doc, s.Default)
+	}
+	return b.String()
+}
 
 // command is what the command line asks for.
 type command int
@@ -51,7 +69,12 @@ type options struct {
 	autoApply bool   // merge
 	left      string // diff
 	right     string // diff
+	// settings are --KEY VALUE overrides of registered settings, in order.
+	settings []setting
 }
+
+// setting is one key and value from the command line.
+type setting struct{ key, value string }
 
 // usageError is a command-line mistake; it is reported with the usage text
 // and exit code 2.
@@ -70,6 +93,7 @@ func parseArgs(args []string) (options, error) {
 	var o options
 	var paths []string
 	var help, version, haveOutput bool
+	seen := map[string]bool{}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--" {
@@ -97,6 +121,24 @@ func parseArgs(args []string) (options, error) {
 				return o, usagef("%s given more than once", name)
 			}
 			o.output, haveOutput = value, true
+			continue
+		}
+		if s, ok := settingFlag(name); ok {
+			if !hasValue {
+				if i+1 >= len(args) {
+					return o, usagef("%s needs a value (%s)", name, strings.Join(s.Values, ", "))
+				}
+				i++
+				value = args[i]
+			}
+			if err := s.Validate(value); err != nil {
+				return o, usagef("%s: %v", name, err)
+			}
+			if seen[s.Key] {
+				return o, usagef("%s given more than once", name)
+			}
+			seen[s.Key] = true
+			o.settings = append(o.settings, setting{s.Key, value})
 			continue
 		}
 		if hasValue {
@@ -145,6 +187,16 @@ func parseArgs(args []string) (options, error) {
 		return o, usagef("expected 2 files (diff) or 3 files and -o (merge), got %d", len(paths))
 	}
 	return o, nil
+}
+
+// settingFlag returns the registered setting a --KEY flag names.
+func settingFlag(name string) (config.Setting, bool) {
+	key, ok := strings.CutPrefix(name, "--")
+	if !ok {
+		return config.Setting{}, false
+	}
+	s, err := config.Lookup(key)
+	return s, err == nil && s.Flag
 }
 
 // printUsageError writes a usage error followed by the usage text.

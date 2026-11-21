@@ -9,17 +9,67 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hadi-susanto/mergediff/internal/config"
 	"github.com/hadi-susanto/mergediff/internal/session"
 )
 
 // stubGUI replaces the window with a function that records the session.
+// It also points the config file at a fresh temporary directory.
 func stubGUI(t *testing.T, code int) **session.Session {
 	t.Helper()
+	got, _ := stubGUIConfig(t, code)
+	return got
+}
+
+// stubGUIConfig is stubGUI that also records the settings the window got,
+// and returns the config file path.
+func stubGUIConfig(t *testing.T, code int) (**session.Session, *config.Config) {
+	t.Helper()
 	var got *session.Session
-	old := startGUI
-	startGUI = func(s *session.Session) int { got = s; return code }
-	t.Cleanup(func() { startGUI = old })
-	return &got
+	var cfg config.Config
+	old, oldPath := startGUI, configPath
+	path := filepath.Join(t.TempDir(), "mergediff", "config.toml")
+	configPath = func() (string, error) { return path, nil }
+	startGUI = func(s *session.Session, c config.Config) int { got, cfg = s, c; return code }
+	t.Cleanup(func() { startGUI, configPath = old, oldPath })
+	return &got, &cfg
+}
+
+func TestSettingsFromConfigAndFlags(t *testing.T) {
+	dir := t.TempDir()
+	a := writeFile(t, dir, "a.txt", "x\n")
+	opened, cfg := stubGUIConfig(t, 0)
+	path, _ := configPath()
+	run := func(args ...string) (int, string) {
+		var stdout, stderr bytes.Buffer
+		*opened = nil
+		code := run(args, &stdout, &stderr)
+		return code, stderr.String()
+	}
+
+	if code, _ := run(a, a); code != 0 || cfg.Theme() != config.ThemeSystem || cfg.WindowState() != config.WindowNormal {
+		t.Fatalf("no config file: code %d, %v", code, cfg.Values())
+	}
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	writeFile(t, filepath.Dir(path), "config.toml", "theme = \"dark\"\nwindow-state = \"maximized\"\n")
+	if code, _ := run(a, a); code != 0 || cfg.Theme() != config.ThemeDark || cfg.WindowState() != config.WindowMaximized {
+		t.Fatalf("config file: code %d, %v", code, cfg.Values())
+	}
+	if code, _ := run("--theme", "light", a, a, "--window-state=normal"); code != 0 ||
+		cfg.Theme() != config.ThemeLight || cfg.SourceOf(config.KeyTheme) != config.FromFlag ||
+		cfg.WindowState() != config.WindowNormal {
+		t.Fatalf("flags override the file: code %d, %v", code, cfg.Values())
+	}
+
+	writeFile(t, filepath.Dir(path), "config.toml", "theme = \"blue\"\n")
+	code, stderr := run(a, a)
+	if code != exitError || *opened != nil || !strings.Contains(stderr, "mergediff: config "+path+": ") ||
+		strings.Contains(stderr, "Usage:") {
+		t.Fatalf("bad config: code %d, opened %v, stderr %q", code, *opened != nil, stderr)
+	}
+	if code, _ := run("--version"); code != 0 {
+		t.Fatalf("--version must not read the config, code %d", code)
+	}
 }
 
 func writeFile(t *testing.T, dir, name, content string) string {

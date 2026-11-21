@@ -12,6 +12,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
+	"github.com/hadi-susanto/mergediff/internal/config"
 	"github.com/hadi-susanto/mergediff/internal/session"
 )
 
@@ -62,13 +63,39 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "mergediff: %v\n", err)
 		return exitError
 	}
-	return startGUI(sess)
+	cfg, err := loadSettings(opts.settings)
+	if err != nil {
+		fmt.Fprintf(stderr, "mergediff: %v\n", err)
+		return exitError
+	}
+	return startGUI(sess, cfg)
+}
+
+// configPath locates the config file; a variable so tests can redirect it.
+var configPath = config.Path
+
+// loadSettings returns the config file's settings overridden by the
+// command-line flags. Without a config directory (e.g. no home directory)
+// the defaults apply: settings are optional and must not block a merge.
+func loadSettings(flags []setting) (config.Config, error) {
+	cfg := config.Defaults()
+	if path, err := configPath(); err == nil {
+		if cfg, err = config.Load(path); err != nil {
+			return config.Config{}, err
+		}
+	}
+	for _, f := range flags {
+		if err := cfg.Override(f.key, f.value, config.FromFlag); err != nil {
+			return config.Config{}, err // parseArgs already validated; a registry bug
+		}
+	}
+	return cfg, nil
 }
 
 // closeRequestedEvent tells the frontend the window's close button was used.
 const closeRequestedEvent = "mergediff:close-requested"
 
-func runGUI(sess *session.Session) int {
+func runGUI(sess *session.Session, cfg config.Config) int {
 	app := newApp(sess)
 	wails := application.New(application.Options{
 		Name:        "mergediff",

@@ -28,6 +28,11 @@ func TestParseArgs(t *testing.T) {
 		{"short help wins over paths", []string{"a", "-h"}, options{cmd: cmdHelp}},
 		{"version", []string{"--version"}, options{cmd: cmdVersion}},
 		{"short version", []string{"-v"}, options{cmd: cmdVersion}},
+		{"settings flags anywhere", []string{"--theme", "dark", "B", "L", "R", "-o", "M", "--window-state=maximized"},
+			options{cmd: cmdMerge, base: "B", local: "L", remote: "R", output: "M",
+				settings: []setting{{"theme", "dark"}, {"window-state", "maximized"}}}},
+		{"theme with =", []string{"a", "b", "--theme=system"},
+			options{cmd: cmdDiff, left: "a", right: "b", settings: []setting{{"theme", "system"}}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -59,6 +64,11 @@ func TestParseArgsErrors(t *testing.T) {
 		{"output twice", []string{"b", "l", "r", "-o", "m", "-o", "n"}, "more than once"},
 		{"unknown option", []string{"a", "b", "--frobnicate"}, "unknown option --frobnicate"},
 		{"value on a switch", []string{"b", "l", "r", "-o", "m", "--auto-apply=yes"}, "does not take a value"},
+		{"bad theme", []string{"a", "b", "--theme", "blue"}, "--theme: invalid value \"blue\" for theme (allowed: system, light, dark)"},
+		{"theme without value", []string{"a", "b", "--theme"}, "--theme needs a value (system, light, dark)"},
+		{"theme twice", []string{"a", "b", "--theme", "dark", "--theme=light"}, "--theme given more than once"},
+		{"bad window state", []string{"a", "b", "--window-state=full"}, "allowed: normal, maximized"},
+		{"settings key needs two dashes", []string{"a", "b", "-theme", "dark"}, "unknown option -theme"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -71,6 +81,14 @@ func TestParseArgsErrors(t *testing.T) {
 				t.Fatalf("err = %q, want it to mention %q", err, tt.msg)
 			}
 		})
+	}
+}
+
+func TestUsageListsSettingsFlags(t *testing.T) {
+	for _, want := range []string{"--theme system|light|dark\n", "light/dark setting (default system)", "--window-state normal|maximized\n", "(default normal)"} {
+		if !strings.Contains(usage, want) {
+			t.Errorf("usage is missing %q:\n%s", want, usage)
+		}
 	}
 }
 

@@ -56,7 +56,7 @@ func Load(path string) (Config, error) {
 		return c, nil
 	}
 	if err != nil {
-		return Config{}, err
+		return Config{}, fmt.Errorf("read config: %w", err)
 	}
 	file, err := Parse(data)
 	if err != nil {
