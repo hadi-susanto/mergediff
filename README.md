@@ -36,6 +36,7 @@ the binary on your `PATH`:
 | Windows (x64) | `mergediff_<date>_windows_amd64.zip` |
 | macOS (Apple silicon and Intel) | `mergediff_<date>_darwin_universal.zip` |
 | Linux (x64) | `mergediff_<date>_linux_amd64.tar.gz` |
+| Debian / Ubuntu (x64) | `mergediff_<date>_linux_amd64.deb` |
 
 Check a download against `SHA256SUMS.txt` with `sha256sum -c --ignore-missing SHA256SUMS.txt`.
 
@@ -44,7 +45,10 @@ Platform notes:
 - **macOS:** binaries are not signed or notarized yet. If macOS blocks the
   first run, allow it under *System Settings → Privacy & Security* ("Open
   Anyway"), or run `xattr -d com.apple.quarantine /path/to/mergediff`.
-- **Linux:** needs GTK 4 and WebKitGTK 6.0 at runtime, e.g. on Ubuntu 24.04 or later:
+- **Debian / Ubuntu:** `sudo apt install ./mergediff_<date>_linux_amd64.deb`
+  installs the binary to `/usr/bin`, a desktop entry and icon, and pulls in the
+  GTK 4 and WebKitGTK 6.0 runtime libraries (Ubuntu 24.04 or later).
+- **Linux (archive):** needs GTK 4 and WebKitGTK 6.0 at runtime, e.g. on Ubuntu 24.04 or later:
   `sudo apt install libgtk-4-1 libwebkitgtk-6.0-4`.
 - **Windows:** needs the Microsoft Edge WebView2 runtime, which Windows 10
   and 11 normally include.

@@ -250,7 +250,7 @@ Required targets (each with a one-line `## description` shown by `make help`):
   - `windows-latest` → `windows/amd64`
   - `macos-latest` → `darwin/universal`
   - `ubuntu-latest` → `linux/amd64` (install `libgtk-4-dev libwebkitgtk-6.0-dev` first)
-  - Each runs `make build VERSION_DATE=$VERSION_DATE` (so builds use the same Makefile logic as local), then packages the binary as `mergediff_<YYYY-MM-DD>_<os>_<arch>.zip` (`.tar.gz` on Linux) and uploads it as an artifact.
+  - Each runs `make build VERSION_DATE=$VERSION_DATE` (so builds use the same Makefile logic as local), then packages the binary as `mergediff_<YYYY-MM-DD>_<os>_<arch>.zip` (`.tar.gz` on Linux) and uploads it as an artifact. Linux also builds `mergediff_<YYYY-MM-DD>_linux_amd64.deb` with `wails3 tool package -format deb` from `build/linux/nfpm/nfpm.yaml` (version `<YYYY-MM-DD>-1`, `/usr/bin/mergediff`, `build/linux/nfpm/mergediff.desktop`, `build/appicon.svg`; `depends` lists the runtime libraries the binary links and must change with them).
 - **release** job, needs `build`: downloads all artifacts, generates `SHA256SUMS.txt`, and creates a GitHub Release named `mergediff YYYY-MM-DD (a1b2c3d)` with tag-derived notes (commits since the previous `v*` tag) and all archives attached.
 - Pin every third-party action to a specific major version (e.g. `actions/checkout@v4`); verify the current versions before use.
 - Code signing / notarization is out of scope for now; mention in the README that macOS users may need to allow the app in Privacy & Security.
