@@ -11,6 +11,8 @@ Usage: ui.py STEP [STEP ...]
   clickat X Y          left-click at screen X,Y (XTest), e.g. to focus a pane
   pixel X Y            print the colour at screen X,Y as #rrggbb
   find TEXT            wait until some element's text contains TEXT (exit 1 if not)
+  samples TITLE SECS   wait for a window titled TITLE, then print the brightness
+                       (0-255) of its toolbar every frame for SECS seconds
   sleep SECONDS
 """
 import sys
@@ -156,6 +158,45 @@ def pixel(x, y):
     print(f"#{r:02x}{g:02x}{b:02x}")
 
 
+def find_window(d, title, timeout=30):
+    """The X window whose title starts with title, polled until it exists."""
+    root = d.screen().root
+    clients = d.intern_atom("_NET_CLIENT_LIST")
+    name_atom, utf8 = d.intern_atom("_NET_WM_NAME"), d.intern_atom("UTF8_STRING")
+    end = time.time() + timeout
+    while time.time() < end:
+        prop = root.get_full_property(clients, 0)
+        for wid in prop.value if prop else []:
+            w = d.create_resource_object("window", wid)
+            try:
+                name = w.get_full_property(name_atom, utf8)
+            except Exception:
+                continue
+            value = name.value.decode() if name and isinstance(name.value, bytes) else ""
+            if value.startswith(title):
+                return w
+        time.sleep(0.005)
+    sys.exit(f"window {title!r} not found")
+
+
+def samples(title, seconds):
+    """Brightness of the window's toolbar from the moment the window exists:
+    catches a frame painted in the wrong theme at startup."""
+    from Xlib import X
+
+    d = xdisplay()
+    w = find_window(d, title)
+    end = time.time() + seconds
+    while time.time() < end:
+        try:
+            geo = w.get_geometry()
+            raw = w.get_image(geo.width // 2, 20, 1, 1, X.ZPixmap, 0xFFFFFFFF).data
+            print((raw[0] + raw[1] + raw[2]) // 3, flush=True)
+        except Exception:
+            pass  # not viewable yet
+        time.sleep(0.01)
+
+
 def texts(node, depth=0):
     """Yields the text of node and its descendants (accessible name or Text)."""
     if node is None or depth > 40:
@@ -218,6 +259,9 @@ def main(argv):
             i += 2
         elif step == "pixel":
             pixel(int(argv[i + 1]), int(argv[i + 2]))
+            i += 2
+        elif step == "samples":
+            samples(argv[i + 1], float(argv[i + 2]))
             i += 2
         elif step == "find":
             i += 1

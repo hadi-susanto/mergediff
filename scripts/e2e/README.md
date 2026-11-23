@@ -49,7 +49,8 @@ XWayland is unverified. The app itself is not X11-specific.
   touching earlier typing, the diff window
 - `settings.sh` — `mergediff settings` (set keeps comments, bad values
   leave the file alone), a dark theme and maximized window from the config
-  file, `--theme` / `--window-state` overriding it, a broken config (exit 2)
+  file, `--theme` / `--window-state` overriding it, no frame painted in the
+  wrong theme at startup, a broken config (exit 2)
 - `scratch.sh` — `mergediff` without arguments: typing into both panes,
   Refresh by F5, Ctrl+Enter and the button, the out-of-date state after an
   edit, Esc not closing, Close exiting 0
@@ -59,7 +60,8 @@ XWayland is unverified. The app itself is not X11-specific.
   handy for manual checks
 - `lib.sh` — shared helpers (`check`, `ui`, `start_app`, …)
 - `ui.py` — the driver: `wait`, `dump`, `click NAME[#N]`, `key COMBO`,
-  `type TEXT`, `scroll X Y N`, `clickat X Y`, `pixel X Y`, `find TEXT`
+  `type TEXT`, `scroll X Y N`, `clickat X Y`, `pixel X Y`, `find TEXT`,
+  `samples TITLE SECS`
 
 The scripts use their own config file (`XDG_CONFIG_HOME` points into a
 temporary directory), so your settings never affect them. `ui.py` refuses
