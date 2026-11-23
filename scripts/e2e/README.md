@@ -23,6 +23,20 @@ Linux with an X11 session (they open real windows on your desktop), plus:
 `run.sh` checks these first and exits 2 if something is missing. The
 scripts are not part of `make check` or CI, which have no display.
 
+### X11 only, no Wayland yet
+
+Log in to an **X11 session** to run them (tested on Linux Mint 22.3 / X11).
+In a Wayland session GTK4 opens mergediff as a native Wayland window, which
+`wmctrl`, `xprop`, XTest and the screen-pixel checks cannot see. The scripts
+then fail with "window not found" or ui.py's "refusing to send input"; they
+never type into another window. Only the AT-SPI parts (finding and clicking
+buttons, reading text) work on Wayland.
+
+Probable fix, not yet tried: start the app with `GDK_BACKEND=x11` when
+`WAYLAND_DISPLAY` is set (in `start_app`, `lib.sh`), so it runs through
+XWayland where the X11 tools work. Whether screen pixels can be read under
+XWayland is unverified. The app itself is not X11-specific.
+
 ## Files
 
 - `run.sh` — preflight checks, runs every script, overall status
