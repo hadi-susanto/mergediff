@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=mergediff
+GenericName=Diff and Merge Tool
+Comment=Compare text and resolve 3-way merge conflicts
+Exec=mergediff
+TryExec=mergediff
+Icon=mergediff
+Terminal=false
+StartupWMClass=mergediff
+Categories=Development;
+Keywords=diff;merge;compare;conflict;git;mergetool;difftool;
