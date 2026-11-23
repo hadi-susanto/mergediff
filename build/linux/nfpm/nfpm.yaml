@@ -3,28 +3,48 @@
 #
 # The lines below are called `modelines`. See `:help modeline`
 
+#
+# The release workflow sets GOARCH, VERSION_DATE (YYYY-MM-DD from the tag) and
+# GIT_COMMITTER_NAME/GIT_COMMITTER_EMAIL (author of the tagged commit). The
+# package version is the date plus the release, e.g. 2026-11-23-1.
+
 name: "mergediff"
 arch: ${GOARCH}
 platform: "linux"
-version: "0.0.0"
-section: "default"
-priority: "extra"
+version: ${VERSION_DATE}
+version_schema: none
+section: "devel"
+priority: "optional"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
-description: "3-way merge and 2-way diff tool"
+description: |-
+  3-way merge and 2-way diff tool
+  A lightweight merge and diff GUI inspired by the JetBrains merge tool that
+  works as a Git mergetool and difftool.
 vendor: "Hadi Susanto Lesmana"
-homepage: "https://wails.io"
+homepage: "https://github.com/hadi-susanto/mergediff"
 license: "MIT"
 release: "1"
 
 contents:
   - src: "./bin/mergediff"
-    dst: "/usr/local/bin/mergediff"
-  - src: "./build/appicon.png"
-    dst: "/usr/share/icons/hicolor/128x128/apps/mergediff.png"
-  - src: "./build/linux/mergediff.desktop"
+    dst: "/usr/bin/mergediff"
+    file_info:
+      mode: 0755
+  - src: "./build/appicon.svg"
+    dst: "/usr/share/icons/hicolor/scalable/apps/mergediff.svg"
+    file_info:
+      mode: 0644
+  - src: "./build/linux/nfpm/mergediff.desktop"
     dst: "/usr/share/applications/mergediff.desktop"
+    file_info:
+      mode: 0644
+  - src: "./LICENSE"
+    dst: "/usr/share/doc/mergediff/copyright"
+    file_info:
+      mode: 0644
 
-# Default dependencies for the GTK4 + WebKitGTK 6.0 stack (Ubuntu 24.04+ / Debian 13+)
+# The binary's runtime libraries: GTK 4 + WebKitGTK 6.0 (Ubuntu 24.04+ / Debian 13+).
+# Keep in sync with the libraries the binary links (readelf -d bin/mergediff).
 depends:
   - libgtk-4-1
   - libwebkitgtk-6.0-4

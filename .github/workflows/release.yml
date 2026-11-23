@@ -84,6 +84,20 @@ jobs:
           got=$(bin/mergediff --version)
           echo "$got"
           test "$got" = "mergediff $VERSION_DATE ($COMMIT)"
+      - name: macOS app bundle
+        if: matrix.os == 'darwin'
+        run: |
+          # bin/mergediff.app: binary, Info.plist, icons.icns (+ Assets.car with Xcode 26+), ad-hoc signed.
+          wails3 task darwin:create:app:bundle
+          app=bin/mergediff.app
+          plutil -replace CFBundleShortVersionString -string "${VERSION_DATE//-/.}" "$app/Contents/Info.plist"
+          plutil -replace CFBundleVersion -string "${VERSION_DATE//-/.}" "$app/Contents/Info.plist"
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict "$app"
+          ls -l "$app/Contents/Resources"
+          got=$("$app/Contents/MacOS/mergediff" --version)
+          echo "$got"
+          test "$got" = "mergediff $VERSION_DATE ($COMMIT)"
       - name: Package
         run: |
           name="mergediff_${VERSION_DATE}_${{ matrix.os }}_${{ matrix.arch }}"
@@ -92,10 +106,22 @@ jobs:
           cd bin
           case "${{ matrix.os }}" in
             windows) 7z a "../dist/$name.zip" mergediff.exe LICENSE ;;
-            darwin) zip "../dist/$name.zip" mergediff LICENSE ;;
+            darwin) zip -r -y "../dist/$name.zip" mergediff.app LICENSE ;;
             linux) tar -czf "../dist/$name.tar.gz" mergediff LICENSE ;;
           esac
           ls -l ../dist
+      - name: Debian package
+        if: matrix.os == 'linux'
+        run: |
+          name="mergediff_${VERSION_DATE}_${{ matrix.os }}_${{ matrix.arch }}"
+          GOARCH=${{ matrix.arch }} \
+          GIT_COMMITTER_NAME="$(git log -1 --format=%an)" \
+          GIT_COMMITTER_EMAIL="$(git log -1 --format=%ae)" \
+            wails3 tool package -name mergediff -format deb \
+              -config build/linux/nfpm/nfpm.yaml -out dist
+          mv dist/mergediff.deb "dist/$name.deb"
+          dpkg-deb --info "dist/$name.deb"
+          dpkg-deb --contents "dist/$name.deb"
       - uses: actions/upload-artifact@v7
         with:
           name: mergediff-${{ matrix.os }}-${{ matrix.arch }}

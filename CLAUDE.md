@@ -84,6 +84,9 @@ mergediff/
   docs/mockups/           # UI design reference (see "Design reference")
     mergediff-mockup-light.png
     mergediff-mockup-dark.png
+  docs/screenshots/       # README screenshots of the real app (testdata/dev merge, 1280×400)
+    mergediff-light.png
+    mergediff-dark.png
   .gitignore              # Must cover all build/dev output (see "Makefile")
   Makefile                # Dev, build, test and release automation
   LICENSE                 # MIT
@@ -109,6 +112,16 @@ Standard Wails v3 project layout: `package main` at the repo root, built by
     `-ldflags="-w -s {{.EXTRA_LDFLAGS}}"` so the version can be injected.
   - `build/config.yml`: app info (name, identifier, description, copyright)
     and dev-mode sample arguments.
+  - `build/Taskfile.yml` `generate:icons`: `windows/icon.ico` from
+    `appicon.png`, `darwin/icons.icns` from `darwin/appicon.png` (padded to
+    Apple's icon grid). On macOS with Xcode 26+ the Icon Composer file
+    `appicon.icon` (foreground layer `Assets/mergediff.svg`, background from
+    its `fill`) produces `darwin/Assets.car` and `icons.icns` instead;
+    `Assets.car` is build output (gitignored).
+- **App icon:** `build/appicon.svg` is the source. `build/appicon.png` and
+  `build/darwin/appicon.png` are 1024×1024 transparent renders of it (the
+  macOS one scaled to an 824 px body); re-render both and update
+  `appicon.icon/Assets/mergediff.svg` when the SVG changes.
 - **`frontend/dist/.gitkeep`** is committed (and copied from
   `frontend/public/.gitkeep` by Vite) so `//go:embed all:frontend/dist`
   compiles before the frontend is built; `go vet ./...` and `go test ./...`
@@ -250,7 +263,7 @@ Required targets (each with a one-line `## description` shown by `make help`):
   - `windows-latest` → `windows/amd64`
   - `macos-latest` → `darwin/universal`
   - `ubuntu-latest` → `linux/amd64` (install `libgtk-4-dev libwebkitgtk-6.0-dev` first)
-  - Each runs `make build VERSION_DATE=$VERSION_DATE` (so builds use the same Makefile logic as local), then packages the binary as `mergediff_<YYYY-MM-DD>_<os>_<arch>.zip` (`.tar.gz` on Linux) and uploads it as an artifact.
+  - Each runs `make build VERSION_DATE=$VERSION_DATE` (so builds use the same Makefile logic as local), then packages the binary as `mergediff_<YYYY-MM-DD>_<os>_<arch>.zip` (`.tar.gz` on Linux) and uploads it as an artifact. The macOS zip holds `mergediff.app` (`wails3 task darwin:create:app:bundle`, `CFBundleShortVersionString`/`CFBundleVersion` set to `YYYY.MM.DD`, ad-hoc signed) instead of the bare binary. Linux also builds `mergediff_<YYYY-MM-DD>_linux_amd64.deb` with `wails3 tool package -format deb` from `build/linux/nfpm/nfpm.yaml` (version `<YYYY-MM-DD>-1`, `/usr/bin/mergediff`, `build/linux/nfpm/mergediff.desktop`, `build/appicon.svg`; `depends` lists the runtime libraries the binary links and must change with them).
 - **release** job, needs `build`: downloads all artifacts, generates `SHA256SUMS.txt`, and creates a GitHub Release named `mergediff YYYY-MM-DD (a1b2c3d)` with tag-derived notes (commits since the previous `v*` tag) and all archives attached.
 - Pin every third-party action to a specific major version (e.g. `actions/checkout@v4`); verify the current versions before use.
 - Code signing / notarization is out of scope for now; mention in the README that macOS users may need to allow the app in Privacy & Security.

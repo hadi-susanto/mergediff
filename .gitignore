@@ -26,3 +26,6 @@ coverage.*
 .DS_Store
 Thumbs.db
 __pycache__/
+
+# Compiled from build/appicon.icon by actool (macOS, Xcode 26+) during the build
+/build/darwin/Assets.car
