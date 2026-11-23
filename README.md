@@ -34,7 +34,7 @@ the binary on your `PATH`:
 | Platform | Archive |
 |---|---|
 | Windows (x64) | `mergediff_<date>_windows_amd64.zip` |
-| macOS (Apple silicon and Intel) | `mergediff_<date>_darwin_universal.zip` |
+| macOS (Apple silicon and Intel) | `mergediff_<date>_darwin_universal.zip` (`mergediff.app`) |
 | Linux (x64) | `mergediff_<date>_linux_amd64.tar.gz` |
 | Debian / Ubuntu (x64) | `mergediff_<date>_linux_amd64.deb` |
 
@@ -42,9 +42,12 @@ Check a download against `SHA256SUMS.txt` with `sha256sum -c --ignore-missing SH
 
 Platform notes:
 
-- **macOS:** binaries are not signed or notarized yet. If macOS blocks the
-  first run, allow it under *System Settings → Privacy & Security* ("Open
-  Anyway"), or run `xattr -d com.apple.quarantine /path/to/mergediff`.
+- **macOS:** move `mergediff.app` to `/Applications` and link its binary
+  onto your `PATH` for the command line and Git:
+  `sudo ln -sf /Applications/mergediff.app/Contents/MacOS/mergediff /usr/local/bin/mergediff`.
+  The app is not signed or notarized yet. If macOS blocks the first run,
+  allow it under *System Settings → Privacy & Security* ("Open Anyway"), or
+  run `xattr -dr com.apple.quarantine /Applications/mergediff.app`.
 - **Debian / Ubuntu:** `sudo apt install ./mergediff_<date>_linux_amd64.deb`
   installs the binary to `/usr/bin`, a desktop entry and icon, and pulls in the
   GTK 4 and WebKitGTK 6.0 runtime libraries (Ubuntu 24.04 or later).
