@@ -84,6 +84,9 @@ mergediff/
   docs/mockups/           # UI design reference (see "Design reference")
     mergediff-mockup-light.png
     mergediff-mockup-dark.png
+  docs/screenshots/       # README screenshots of the real app (testdata/dev merge, 1280×400)
+    mergediff-light.png
+    mergediff-dark.png
   .gitignore              # Must cover all build/dev output (see "Makefile")
   Makefile                # Dev, build, test and release automation
   LICENSE                 # MIT

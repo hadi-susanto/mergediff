@@ -18,43 +18,44 @@ Windows, macOS and Linux that works as a Git `mergetool` and `difftool`.
 
 ## Screenshots
 
-Real screenshots will follow; until then, the design mockups:
+A 3-way merge with one conflict, in the light and dark themes:
 
-![mergediff, light theme](docs/mockups/mergediff-mockup-light.png)
-![mergediff, dark theme](docs/mockups/mergediff-mockup-dark.png)
+![mergediff, light theme](docs/screenshots/mergediff-light.png)
+![mergediff, dark theme](docs/screenshots/mergediff-dark.png)
 
 ## Installation
 
 ### Download a release
 
-Download the archive for your platform from the
-[Releases](https://github.com/hadi-susanto/mergediff/releases) page and put
-the binary on your `PATH`:
+Download the file for your platform from the
+[Releases](https://github.com/hadi-susanto/mergediff/releases) page and make
+`mergediff` available on your `PATH` (see the notes below):
 
-| Platform | Archive |
-|---|---|
-| Windows (x64) | `mergediff_<date>_windows_amd64.zip` |
+| Platform                        | File                                                      |
+|---------------------------------|-----------------------------------------------------------|
+| Windows (x64)                   | `mergediff_<date>_windows_amd64.zip` (`mergediff.exe`)    |
 | macOS (Apple silicon and Intel) | `mergediff_<date>_darwin_universal.zip` (`mergediff.app`) |
-| Linux (x64) | `mergediff_<date>_linux_amd64.tar.gz` |
-| Debian / Ubuntu (x64) | `mergediff_<date>_linux_amd64.deb` |
+| Linux (x64)                     | `mergediff_<date>_linux_amd64.tar.gz` (`mergediff`)       |
+| Debian / Ubuntu (x64)           | `mergediff_<date>_linux_amd64.deb`                        |
 
 Check a download against `SHA256SUMS.txt` with `sha256sum -c --ignore-missing SHA256SUMS.txt`.
 
 Platform notes:
 
+- **Windows:** put `mergediff.exe` in a folder on your `PATH`. It needs the
+  Microsoft Edge WebView2 runtime, which Windows 10 and 11 normally include.
 - **macOS:** move `mergediff.app` to `/Applications` and link its binary
   onto your `PATH` for the command line and Git:
   `sudo ln -sf /Applications/mergediff.app/Contents/MacOS/mergediff /usr/local/bin/mergediff`.
   The app is not signed or notarized yet. If macOS blocks the first run,
   allow it under *System Settings → Privacy & Security* ("Open Anyway"), or
   run `xattr -dr com.apple.quarantine /Applications/mergediff.app`.
+- **Linux:** put `mergediff` in a folder on your `PATH`. It needs GTK 4 and
+  WebKitGTK 6.0 at runtime, e.g. on Ubuntu 24.04 or later:
+  `sudo apt install libgtk-4-1 libwebkitgtk-6.0-4`.
 - **Debian / Ubuntu:** `sudo apt install ./mergediff_<date>_linux_amd64.deb`
   installs the binary to `/usr/bin`, a desktop entry and icon, and pulls in the
   GTK 4 and WebKitGTK 6.0 runtime libraries (Ubuntu 24.04 or later).
-- **Linux (archive):** needs GTK 4 and WebKitGTK 6.0 at runtime, e.g. on Ubuntu 24.04 or later:
-  `sudo apt install libgtk-4-1 libwebkitgtk-6.0-4`.
-- **Windows:** needs the Microsoft Edge WebView2 runtime, which Windows 10
-  and 11 normally include.
 
 ### Build from source
 
@@ -70,12 +71,14 @@ make deps     # Go modules, npm packages, wails3 doctor
 make build    # → bin/mergediff (bin/mergediff.exe on Windows)
 ```
 
-On macOS, `make build UNIVERSAL=1` builds one binary for arm64 and amd64.
+On macOS, `make build UNIVERSAL=1` builds one binary for arm64 and amd64, and
+`wails3 task darwin:create:app:bundle` then wraps it in `bin/mergediff.app`
+(as the release does).
 
 ## Usage
 
 ```
-mergediff BASE LOCAL REMOTE -o MERGED [--auto-apply]   3-way merge
+mergediff BASE LOCAL REMOTE -o MERGED [--auto-apply]    3-way merge
 mergediff LEFT RIGHT                                    2-way diff (read-only)
 mergediff                                               scratch diff of pasted text
 mergediff settings [list | get KEY | set KEY VALUE | unset KEY | path]
@@ -89,7 +92,8 @@ Any window can also take `--theme system|light|dark` and
   gutter buttons, or all non-conflicting ones with *✦ Apply non-conflicting
   changes* (its `▾` menu limits it to Local or Remote). `--auto-apply` applies
   them at startup. Conflicts always start as the base text, and you can edit
-  the Result freely. *Save* writes MERGED.
+  the Result freely. `↑` / `↓` move between changes, *↑ Conflict* / *↓ Conflict* between conflicts. *Save* writes
+  MERGED.
 - **Diff:** two read-only panes with the differences highlighted.
 - **Scratch:** started without arguments, mergediff opens two empty, editable
   panes. Paste or type text into both and press *⟳ Refresh* (`F5` or
@@ -101,37 +105,37 @@ missing BASE (Git's add/add conflicts) is treated as empty.
 
 Exit codes:
 
-| Code | Meaning |
-|---|---|
-| `0` | merge saved with all conflicts resolved, the diff or scratch window closed, or a `settings` command succeeded |
-| `1` | cancelled, or closed with unresolved conflicts or unsaved changes |
-| `2` | usage, I/O or config file error (message on stderr) |
+| Code | Meaning                                                                                                       |
+|------|---------------------------------------------------------------------------------------------------------------|
+| `0`  | merge saved with all conflicts resolved, the diff or scratch window closed, or a `settings` command succeeded |
+| `1`  | cancelled, or closed with unresolved conflicts or unsaved changes                                             |
+| `2`  | usage, I/O or config file error (message on stderr)                                                           |
 
 Keyboard shortcuts (Cmd instead of Ctrl on macOS):
 
-| Keys | Action |
-|---|---|
-| `Ctrl+S` | save |
-| `F7` / `Shift+F7` | next / previous change |
-| `Ctrl+Shift+A` | apply all non-conflicting changes |
-| `Ctrl+Z` | undo (an "apply all" is one step) |
-| `Esc` | cancel (asks first if the result was edited); closes a diff, not a scratch window |
-| `F5` / `Ctrl+Enter` | refresh the comparison (scratch mode) |
+| Keys                | Action                                                                            |
+|---------------------|-----------------------------------------------------------------------------------|
+| `Ctrl+S`            | save                                                                              |
+| `F7` / `Shift+F7`   | next / previous change                                                            |
+| `Ctrl+Shift+A`      | apply all non-conflicting changes                                                 |
+| `Ctrl+Z`            | undo (an "apply all" is one step)                                                 |
+| `Esc`               | cancel (asks first if the result was edited); closes a diff, not a scratch window |
+| `F5` / `Ctrl+Enter` | refresh the comparison (scratch mode)                                             |
 
 ## Settings
 
 Settings live in a TOML file. Run `mergediff settings path` to find it:
 
-| OS | Config file |
-|---|---|
-| Linux | `~/.config/mergediff/config.toml` (or `$XDG_CONFIG_HOME/mergediff/config.toml`) |
-| macOS | `~/Library/Application Support/mergediff/config.toml` |
-| Windows | `%AppData%\mergediff\config.toml` |
+| OS      | Config file                                                                     |
+|---------|---------------------------------------------------------------------------------|
+| Linux   | `~/.config/mergediff/config.toml` (or `$XDG_CONFIG_HOME/mergediff/config.toml`) |
+| macOS   | `~/Library/Application Support/mergediff/config.toml`                           |
+| Windows | `%AppData%\mergediff\config.toml`                                               |
 
-| Key | Values | Default | Meaning |
-|---|---|---|---|
-| `theme` | `system`, `light`, `dark` | `system` | colour theme; `system` follows the OS light/dark setting |
-| `window-state` | `normal`, `maximized` | `normal` | window state at startup |
+| Key            | Values                    | Default  | Meaning                                                  |
+|----------------|---------------------------|----------|----------------------------------------------------------|
+| `theme`        | `system`, `light`, `dark` | `system` | colour theme; `system` follows the OS light/dark setting |
+| `window-state` | `normal`, `maximized`     | `normal` | window state at startup                                  |
 
 ```toml
 # ~/.config/mergediff/config.toml
@@ -181,11 +185,12 @@ make dev               # run with hot reload on testdata/dev (ARGS="..." for oth
 make build             # production binary in bin/
 make check             # go vet, gofmt check, type-check, Go and frontend tests
 make test              # clean, check (uncached), then end-to-end tests
+make e2e               # build, then end-to-end UI tests only (Linux/X11)
 make version           # version string a build would embed
 make clean             # remove build output and Wails' task cache
 ```
 
-- Go code lives in `internal/` (`textio`, `diff`, `merge`, `session`); the
+- Go code lives in `internal/` (`config`, `textio`, `diff`, `merge`, `session`); the
   root package only wires the CLI and Wails together.
 - The frontend (`frontend/src`) is vanilla TypeScript with CodeMirror 6. Logic
   modules are DOM-free and tested with `node --test`.
@@ -216,8 +221,9 @@ green. It never moves an existing tag.
 
 Pushing the tag starts the [release workflow](.github/workflows/release.yml)
 ([Actions](https://github.com/hadi-susanto/mergediff/actions)): it runs the
-tests, builds Windows, macOS (universal) and Linux binaries, and publishes a
-GitHub Release named `mergediff YYYY-MM-DD (commit)` with the archives,
+tests, builds Windows, macOS (universal, as `mergediff.app`) and Linux
+binaries plus a Debian package, and publishes a GitHub Release named
+`mergediff YYYY-MM-DD (commit)` with the archives, the `.deb`,
 `SHA256SUMS.txt` and the commits since the previous release.
 
 ## License
