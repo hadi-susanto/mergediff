@@ -96,6 +96,18 @@ jobs:
             linux) tar -czf "../dist/$name.tar.gz" mergediff LICENSE ;;
           esac
           ls -l ../dist
+      - name: Debian package
+        if: matrix.os == 'linux'
+        run: |
+          name="mergediff_${VERSION_DATE}_${{ matrix.os }}_${{ matrix.arch }}"
+          GOARCH=${{ matrix.arch }} \
+          GIT_COMMITTER_NAME="$(git log -1 --format=%an)" \
+          GIT_COMMITTER_EMAIL="$(git log -1 --format=%ae)" \
+            wails3 tool package -name mergediff -format deb \
+              -config build/linux/nfpm/nfpm.yaml -out dist
+          mv dist/mergediff.deb "dist/$name.deb"
+          dpkg-deb --info "dist/$name.deb"
+          dpkg-deb --contents "dist/$name.deb"
       - uses: actions/upload-artifact@v7
         with:
           name: mergediff-${{ matrix.os }}-${{ matrix.arch }}
