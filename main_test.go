@@ -278,6 +278,9 @@ func TestWindowOptions(t *testing.T) {
 	sess := &session.Session{Title: "x.go"}
 	cfg := config.Defaults()
 	o := windowOptions(sess, cfg)
+	if o.URL != "/?theme=system" {
+		t.Errorf("URL = %q", o.URL)
+	}
 	if o.Title != "mergediff — x.go" || o.StartState != application.WindowStateNormal ||
 		o.Windows.Theme != application.SystemDefault || o.Mac.Appearance != "" {
 		t.Errorf("defaults: %+v", o)
@@ -285,7 +288,7 @@ func TestWindowOptions(t *testing.T) {
 	cfg.Override(config.KeyWindowState, config.WindowMaximized, config.FromFlag)
 	cfg.Override(config.KeyTheme, config.ThemeDark, config.FromFlag)
 	o = windowOptions(sess, cfg)
-	if o.StartState != application.WindowStateMaximised || o.Windows.Theme != application.Dark ||
+	if o.URL != "/?theme=dark" || o.StartState != application.WindowStateMaximised || o.Windows.Theme != application.Dark ||
 		o.Mac.Appearance != application.NSAppearanceNameDarkAqua {
 		t.Errorf("maximized dark: %+v", o)
 	}

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { installTheme, resolveTheme, type DarkQuery, type ThemeRoot } from "./theme.ts";
+import { installTheme, resolveTheme, themeFromURL, type DarkQuery, type ThemeRoot } from "./theme.ts";
 
 describe("resolveTheme", () => {
   it("an explicit setting wins over the system", () => {
@@ -49,5 +49,21 @@ describe("installTheme", () => {
     flip(true);
     assert.equal(root.dataset.theme, "dark");
     assert.equal(root.style.colorScheme, "dark");
+  });
+});
+
+describe("themeFromURL", () => {
+  it("reads the theme query parameter", () => {
+    assert.equal(themeFromURL("?theme=dark"), "dark");
+    assert.equal(themeFromURL("?x=1&theme=light"), "light");
+    assert.equal(themeFromURL(""), undefined);
+  });
+
+  it("an initial dark setting applies before the settings load, on a light system", () => {
+    const { root, query, flip } = fakes(false);
+    installTheme(root, query, themeFromURL("?theme=dark"));
+    assert.equal(root.dataset.theme, "dark");
+    flip(false);
+    assert.equal(root.dataset.theme, "dark");
   });
 });

@@ -6,7 +6,7 @@ import { renderDiffView } from "./diffview.ts";
 import { renderMerge, type Rendered } from "./merge.ts";
 import type { CharSpan, MergeChunk } from "./model.ts";
 import { setLanguage } from "./panes.ts";
-import { installTheme } from "./theme.ts";
+import { installTheme, themeFromURL } from "./theme.ts";
 import "./styles.css";
 
 /** Event the backend emits when the window's close button is used (main.go). */
@@ -46,8 +46,12 @@ function charDiff(left: string, right: string): Promise<CharSpan[]> {
   return App.CharDiff(left, right).then((spans) => (spans ?? []) as unknown as CharSpan[]);
 }
 
-/** Sets the "theme" setting; the system theme applies until it is known. */
-const setTheme = installTheme(document.documentElement, window.matchMedia("(prefers-color-scheme: dark)"));
+/** Sets the "theme" setting; it starts from the window URL (see main.go). */
+const setTheme = installTheme(
+  document.documentElement,
+  window.matchMedia("(prefers-color-scheme: dark)"),
+  themeFromURL(location.search),
+);
 
 async function main(): Promise<void> {
   App.Settings()

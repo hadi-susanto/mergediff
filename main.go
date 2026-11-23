@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"runtime/debug"
 	"time"
@@ -155,7 +156,9 @@ func windowOptions(sess *session.Session, cfg config.Config) application.Webview
 		Title:  "mergediff — " + sess.Title,
 		Width:  1400,
 		Height: 900,
-		URL:    "/",
+		// The theme is in the URL so index.html can apply it before the
+		// first paint; asking the backend would arrive a frame too late.
+		URL: "/?theme=" + url.QueryEscape(cfg.Theme()),
 	}
 	if cfg.WindowState() == config.WindowMaximized {
 		opts.StartState = application.WindowStateMaximised

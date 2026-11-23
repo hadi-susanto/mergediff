@@ -23,12 +23,25 @@ export interface DarkQuery {
 }
 
 /**
- * Applies the system theme now (before the settings have loaded) and returns
- * a function that sets the "theme" setting. The system preference is
- * followed while the setting is "system".
+ * The "theme" setting from the page URL. The backend opens the window at
+ * /?theme=<setting>, so the right theme is known before the first paint
+ * (index.html applies it inline; this keeps theme.ts in agreement).
  */
-export function installTheme(root: ThemeRoot, dark: DarkQuery): (setting: string | undefined) => void {
-  let current: string | undefined = "system";
+export function themeFromURL(search: string): string | undefined {
+  return new URLSearchParams(search).get("theme") ?? undefined;
+}
+
+/**
+ * Applies the initial setting now (from the URL, or the system theme) and
+ * returns a function that changes it. The system preference is followed
+ * while the setting is "system".
+ */
+export function installTheme(
+  root: ThemeRoot,
+  dark: DarkQuery,
+  initial: string | undefined = "system",
+): (setting: string | undefined) => void {
+  let current: string | undefined = initial;
   const apply = () => {
     const theme = resolveTheme(current, dark.matches);
     root.dataset.theme = theme;
