@@ -294,6 +294,21 @@ func TestStartDirDiff(t *testing.T) {
 	}
 }
 
+func TestStartDirDiffAbsolutePaths(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "l"), 0o755)
+	os.MkdirAll(filepath.Join(dir, "r"), 0o755)
+	t.Chdir(dir)
+	s, err := StartDirDiff("l", "r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{filepath.Join(dir, "l"), filepath.Join(dir, "r")}
+	if !reflect.DeepEqual(s.Paths, want) {
+		t.Errorf("Paths = %q, want %q", s.Paths, want)
+	}
+}
+
 func TestStartDirDiffErrors(t *testing.T) {
 	dir := t.TempDir()
 	file := write(t, dir, "f.txt", "x")

@@ -175,6 +175,15 @@ type dirCompare struct {
 // comparing them in the background, so the window can open at once.
 // DirEntries waits for the result; DirProgress reports how far it got.
 func StartDirDiff(left, right string) (*Session, error) {
+	// Absolute roots, so the window shows full paths and the entries'
+	// paths do not depend on the working directory.
+	var err error
+	if left, err = filepath.Abs(left); err != nil {
+		return nil, fmt.Errorf("read LEFT: %w", err)
+	}
+	if right, err = filepath.Abs(right); err != nil {
+		return nil, fmt.Errorf("read RIGHT: %w", err)
+	}
 	if err := dirdiff.CheckRoot(left); err != nil {
 		return nil, fmt.Errorf("read LEFT: %w", err)
 	}
