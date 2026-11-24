@@ -1,0 +1,141 @@
+// DOM-free logic of the file list (filelist.ts): path splitting, ordering,
+// truncation and the selection model. Shared by the directory diff and, later,
+// the conflicts window; runs under node --test.
+
+/** A relative path split into its directory part and file name. */
+export interface PathParts {
+  /** Directory with its trailing "/", or "" for a file in the root. */
+  dir: string;
+  name: string;
+}
+
+/** Splits a "/"-separated relative path into directory and file name. */
+export function splitPath(path: string): PathParts {
+  const i = path.lastIndexOf("/");
+  return i < 0 ? { dir: "", name: path } : { dir: path.slice(0, i + 1), name: path.slice(i + 1) };
+}
+
+/** Compares paths in code-unit order, the order the backend sorts in for ASCII. */
+export function comparePaths(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** Returns rows sorted by path; the input is not changed. */
+export function sortByPath<T extends { path: string }>(rows: readonly T[]): T[] {
+  return [...rows].sort((a, b) => comparePaths(a.path, b.path));
+}
+
+/**
+ * Shortens text to at most max characters by replacing its middle with "…",
+ * keeping both ends (for absolute paths, whose start and end both matter).
+ */
+export function middleEllipsis(text: string, max: number): string {
+  const chars = Array.from(text);
+  if (chars.length <= max) return text;
+  if (max <= 1) return "…".slice(0, Math.max(0, max));
+  const keep = max - 1;
+  const head = Math.ceil(keep / 2);
+  const tail = keep - head;
+  return chars.slice(0, head).join("") + "…" + (tail > 0 ? chars.slice(chars.length - tail).join("") : "");
+}
+
+/**
+ * Which rows of a list are selected. Rows are indexes into the rows as
+ * shown; rows for which selectable() is false (e.g. group headers) are
+ * skipped by keyboard movement. One row is current (the keyboard focus);
+ * the selection is that row alone unless multi-select added others.
+ */
+export class Selection {
+  current = -1;
+  private extra = new Set<number>();
+  private anchor = -1;
+  private count: number;
+  private selectable: (i: number) => boolean;
+  private readonly multi: boolean;
+
+  constructor(count: number, selectable: (i: number) => boolean = () => true, multi = false) {
+    this.count = count;
+    this.selectable = selectable;
+    this.multi = multi;
+  }
+
+  /** Resets for a new list of rows, keeping the current row if it still exists. */
+  reset(count: number, selectable: (i: number) => boolean = this.selectable, current = this.current): void {
+    this.count = count;
+    this.selectable = selectable;
+    this.extra.clear();
+    this.current = current >= 0 && current < count && selectable(current) ? current : -1;
+    this.anchor = this.current;
+  }
+
+  /** Whether row i is selected. */
+  has(i: number): boolean {
+    return i === this.current || this.extra.has(i);
+  }
+
+  /** The selected rows, ascending. */
+  rows(): number[] {
+    const all = new Set(this.extra);
+    if (this.current >= 0) all.add(this.current);
+    return [...all].sort((a, b) => a - b);
+  }
+
+  /** Makes row i the only selected row. Returns false if it cannot be selected. */
+  select(i: number): boolean {
+    if (i < 0 || i >= this.count || !this.selectable(i)) return false;
+    this.current = i;
+    this.anchor = i;
+    this.extra.clear();
+    return true;
+  }
+
+  /** Multi-select: adds or removes row i (Ctrl/Cmd+click). */
+  toggle(i: number): boolean {
+    if (!this.multi) return this.select(i);
+    if (i < 0 || i >= this.count || !this.selectable(i)) return false;
+    if (this.has(i) && this.rows().length > 1) {
+      this.extra.delete(i);
+      if (this.current === i) this.current = this.rows()[0];
+    } else {
+      if (this.current >= 0) this.extra.add(this.current);
+      this.current = i;
+    }
+    this.anchor = i;
+    return true;
+  }
+
+  /** Multi-select: selects the selectable rows from the anchor to i (Shift+click). */
+  extendTo(i: number): boolean {
+    if (!this.multi || this.anchor < 0) return this.select(i);
+    if (i < 0 || i >= this.count || !this.selectable(i)) return false;
+    this.extra.clear();
+    const [from, to] = this.anchor <= i ? [this.anchor, i] : [i, this.anchor];
+    for (let j = from; j <= to; j++) if (this.selectable(j)) this.extra.add(j);
+    this.current = i;
+    return true;
+  }
+
+  /** Moves to the next (dir 1) or previous (dir -1) selectable row; stays at the ends. */
+  move(dir: 1 | -1): boolean {
+    const from = this.current < 0 ? (dir === 1 ? -1 : this.count) : this.current;
+    const i = this.find(from, dir, () => true);
+    return i >= 0 && this.select(i);
+  }
+
+  /** Selects the first (dir 1) or last (dir -1) selectable row. */
+  edge(dir: 1 | -1): boolean {
+    const i = this.find(dir === 1 ? -1 : this.count, dir, () => true);
+    return i >= 0 && this.select(i);
+  }
+
+  /**
+   * Index of the first selectable row after (dir 1) or before (dir -1) row
+   * from for which want() holds, or -1.
+   */
+  find(from: number, dir: 1 | -1, want: (i: number) => boolean): number {
+    for (let i = from + dir; i >= 0 && i < this.count; i += dir) {
+      if (this.selectable(i) && want(i)) return i;
+    }
+    return -1;
+  }
+}
