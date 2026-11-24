@@ -243,3 +243,52 @@ func TestScratchAndCompare(t *testing.T) {
 		t.Fatalf("NUL text: err = %v", err)
 	}
 }
+
+func TestLoadDirDiff(t *testing.T) {
+	dir := t.TempDir()
+	left, right := filepath.Join(dir, "l"), filepath.Join(dir, "r")
+	for _, d := range []string{left, right} {
+		if err := os.Mkdir(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(t, left, "same.txt", "x\n")
+	write(t, right, "same.txt", "x\n")
+	write(t, right, "new.txt", "y\n")
+
+	s, err := LoadDirDiff(left, right)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Mode != DirDiff || s.Title != "Compare directories" || !reflect.DeepEqual(s.Paths, []string{left, right}) {
+		t.Errorf("session = %+v", s)
+	}
+	var got []string
+	for _, e := range s.Entries {
+		got = append(got, e.Path+" "+string(e.Status))
+	}
+	if want := []string{"new.txt added", "same.txt unchanged"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("entries = %q, want %q", got, want)
+	}
+	if err := s.Save("x"); !errors.Is(err, ErrNotMerge) {
+		t.Errorf("Save in dirdiff mode: %v, want ErrNotMerge", err)
+	}
+	data, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"mode":"dirdiff"`) || !strings.Contains(string(data), `"entries":[{"path":"new.txt","status":"added"`) {
+		t.Errorf("JSON = %s", data)
+	}
+}
+
+func TestLoadDirDiffErrors(t *testing.T) {
+	dir := t.TempDir()
+	file := write(t, dir, "f.txt", "x")
+	if _, err := LoadDirDiff(dir, file); err == nil || !strings.Contains(err.Error(), "RIGHT") {
+		t.Errorf("RIGHT is a file: %v, want an error naming RIGHT", err)
+	}
+	if _, err := LoadDirDiff(filepath.Join(dir, "missing"), dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("LEFT missing: %v, want ErrNotExist", err)
+	}
+}

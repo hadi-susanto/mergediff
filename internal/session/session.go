@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/hadi-susanto/mergediff/internal/dirdiff"
 	"github.com/hadi-susanto/mergediff/internal/merge"
 	"github.com/hadi-susanto/mergediff/internal/textio"
 )
@@ -22,6 +23,8 @@ const (
 	// Scratch is an editable two-way diff without files: the user pastes
 	// text into both panes and compares it with Compare.
 	Scratch Mode = "scratch"
+	// DirDiff lists the files that differ between two directories.
+	DirDiff Mode = "dirdiff"
 )
 
 // ErrNotMerge is returned by Save in diff mode.
@@ -34,7 +37,7 @@ var ErrNotMerge = errors.New("not a merge session")
 // Base ranges equal their Local ranges.
 type Session struct {
 	Mode  Mode     `json:"mode"`
-	Paths []string `json:"paths"` // merge: BASE, LOCAL, REMOTE, MERGED; diff: LEFT, RIGHT
+	Paths []string `json:"paths"` // merge: BASE, LOCAL, REMOTE, MERGED; diff, dirdiff: LEFT, RIGHT
 	// Title names the file being merged or compared, for the window title.
 	Title         string        `json:"title"`
 	Base          string        `json:"base"`
@@ -47,6 +50,8 @@ type Session struct {
 	// AutoApplied reports that InitialResult already contains every
 	// non-conflicting chunk (--auto-apply), so the UI marks them applied.
 	AutoApplied bool `json:"autoApplied"`
+	// Entries are the files of both trees, sorted by path (dirdiff only).
+	Entries []dirdiff.Entry `json:"entries"`
 
 	eol    textio.EOL
 	output string
@@ -127,6 +132,25 @@ func (s *Session) Save(result string) error {
 		return fmt.Errorf("write MERGED: %w", err)
 	}
 	return nil
+}
+
+// LoadDirDiff compares the directories LEFT and RIGHT. The entries
+// include unchanged files; their line counts are computed separately
+// (dirdiff.StatsAll), so the list can be shown first.
+func LoadDirDiff(left, right string) (*Session, error) {
+	entries, err := dirdiff.Compare(left, right)
+	if err != nil {
+		return nil, err
+	}
+	return &Session{
+		Mode:    DirDiff,
+		Paths:   []string{left, right},
+		Title:   "Compare directories",
+		Chunks:  []merge.Chunk{},
+		Entries: entries,
+		EOL:     textio.LF.Name(),
+		eol:     textio.LF,
+	}, nil
 }
 
 // NewScratch returns an empty scratch session (mergediff without arguments).
