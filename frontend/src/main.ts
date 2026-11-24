@@ -3,6 +3,7 @@ import * as Backend from "../bindings/github.com/hadi-susanto/mergediff/windows"
 import { Mode, type Session } from "../bindings/github.com/hadi-susanto/mergediff/internal/session/models";
 import { showError } from "./dialogs.ts";
 import { renderDiffView, type DiffPaneSpec } from "./diffview.ts";
+import { renderDirView } from "./dirview.ts";
 import { renderMerge, type Rendered } from "./merge.ts";
 import type { CharSpan, MergeChunk } from "./model.ts";
 import { setLanguage } from "./panes.ts";
@@ -78,8 +79,18 @@ async function main(): Promise<void> {
   }
   document.title = `mergediff — ${session.title}`;
   if (session.mode === Mode.DirDiff) {
-    // Placeholder until the directory view exists.
-    showError("The directory view is not built yet.", () => quit(EXIT_OK));
+    const [left = "", right = ""] = session.paths ?? [];
+    renderDirView({
+      left,
+      right,
+      version,
+      backend: {
+        entries: () => Backend.DirEntries().then((e) => e ?? []),
+        progress: () => Backend.DirProgress(),
+        open: (path) => Backend.OpenEntry(path),
+        quit,
+      },
+    });
     return;
   }
   let rendered: Rendered;

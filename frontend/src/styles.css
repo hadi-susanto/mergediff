@@ -534,6 +534,12 @@ body {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
 }
 
+.toolbar-paths .toolbar-left {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .path-bar {
   display: flex;
   align-items: baseline;
