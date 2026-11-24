@@ -20,6 +20,8 @@
   --conflict-strong: #f0a9a9;
   --conflict-fg: #b42318;
   --added-fg: #2b6a32;
+  --deleted-fg: #6b6a64;
+  --modified-fg: #1f5fa8;
 
   --btn-bg: #ffffff;
   --btn-border: #cfcdc6;
@@ -61,6 +63,8 @@
   --conflict-strong: #8c3235;
   --conflict-fg: #f4b4b0;
   --added-fg: #a9dca3;
+  --deleted-fg: #a3a29c;
+  --modified-fg: #a8c8ec;
 
   --btn-bg: #2b2b29;
   --btn-border: #45443f;
@@ -518,3 +522,180 @@ body {
 .md-conn.md-resolved {
   opacity: 0.35;
 }
+
+/* Directory view (dirview.ts) */
+.panes-dir {
+  display: flex;
+  flex-direction: column;
+  background: var(--editor-bg);
+}
+
+.mono {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+}
+
+.path-bar {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.path-bar-label {
+  color: var(--chrome-muted);
+}
+
+.path-bar-path {
+  color: var(--chrome-fg);
+  overflow: hidden;
+}
+
+.path-bar-arrow {
+  color: var(--chrome-muted);
+}
+
+/* File list (filelist.ts) */
+.fl {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  outline: none;
+}
+
+.fl-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.fl-row {
+  display: grid;
+  grid-template-columns: var(--fl-columns);
+  align-items: center;
+  min-height: 32px;
+  border-bottom: 1px solid var(--chrome-border);
+  cursor: default;
+  user-select: none;
+}
+
+.fl-header {
+  min-height: 34px;
+  background: var(--chrome-bg);
+  color: var(--chrome-muted);
+}
+
+.fl-subtitle {
+  font-size: 11px;
+}
+
+.fl-cell {
+  padding: 4px 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fl-row.fl-selected {
+  background: var(--modified-bg);
+}
+
+.fl:focus .fl-row.fl-selected {
+  box-shadow: inset 2px 0 0 var(--modified-strong);
+}
+
+.fl-message {
+  padding: 24px 16px;
+  color: var(--chrome-muted);
+  text-align: center;
+}
+
+/* Path cell: the directory part shrinks first (trailing "…"); the file
+   name only when it alone is wider than the column. */
+.fl-path {
+  display: flex;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+}
+
+.fl-dir {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--chrome-muted);
+}
+
+.fl-name {
+  flex: 0 0 auto;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  color: var(--editor-fg);
+}
+
+/* Status badge (M / A / D / !) and status tag */
+.badge {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 4px;
+}
+
+.st-modified {
+  background: var(--modified-bg);
+  color: var(--modified-fg);
+}
+
+.st-added {
+  background: var(--added-bg);
+  color: var(--added-fg);
+}
+
+.st-deleted {
+  background: var(--deleted-bg);
+  color: var(--deleted-fg);
+}
+
+.st-error {
+  background: var(--conflict-bg);
+  color: var(--conflict-fg);
+}
+
+.st-unchanged {
+  color: var(--chrome-muted);
+}
+
+/* Lines column */
+.lines-added {
+  color: var(--added-fg);
+}
+
+.lines-deleted {
+  color: var(--deleted-fg);
+}
+
+.lines-added + .lines-deleted {
+  margin-left: 8px;
+}
+
+.lines-label {
+  color: var(--chrome-muted);
+}
+
+.fl-row.fl-blocked .fl-name {
+  font-weight: 500;
+}
+
