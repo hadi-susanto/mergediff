@@ -15,113 +15,165 @@ import (
 
 // windowHandle is the part of a Wails window the registry uses. Tests fake it.
 type windowHandle interface {
-	ID() uint
 	Name() string
 	Close()
 	Focus()
 }
 
-// winEntry is one open window: its session's App, its handle and, for a
-// child window, the window that opened it and what it shows (key).
+// winEntry is one window: its session's App, its handle (nil until the
+// window exists) and, for a child window, the window that opened it and
+// what it shows (key).
 type winEntry struct {
-	app       *App
-	handle    windowHandle
-	parent    uint
-	hasParent bool
-	key       string
+	app    *App
+	handle windowHandle
+	parent string // "" for the main window
+	key    string
 }
 
 // errUnknownWindow is returned for a window the registry does not know,
 // e.g. a call that arrives after its window closed.
 var errUnknownWindow = errors.New("unknown window")
 
-// Windows keeps one App (session, exit code, close guard) per window. The
-// main window, opened from the command line, decides the process exit
-// code; child windows close themselves and never end the process.
+// Windows keeps one App (session, exit code, close guard) per window,
+// keyed by window name. The main window, opened from the command line,
+// decides the process exit code; child windows close themselves and never
+// end the process. Closing a window closes the windows it opened.
+//
+// A window is registered under its name before it is created, so its
+// frontend can never call in before the registry knows it.
 type Windows struct {
-	mu      sync.Mutex
-	wins    map[uint]*winEntry
-	mainID  uint
-	hasMain bool
+	mu        sync.Mutex
+	wins      map[string]*winEntry
+	nextChild int
+
+	// newWindow creates the window name showing sess. Set by runGUI;
+	// tests fake it.
+	newWindow func(name string, sess *session.Session, app *App) windowHandle
+	// quitApp ends the application; called when the main window closes.
+	quitApp func()
+	// settings are the effective settings, given to every child window.
+	settings map[string]string
 }
 
 func newWindows() *Windows {
-	return &Windows{wins: map[uint]*winEntry{}}
-}
-
-// registerMain records the main window and its App.
-func (w *Windows) registerMain(h windowHandle, app *App) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.wins[h.ID()] = &winEntry{app: app, handle: h}
-	w.mainID, w.hasMain = h.ID(), true
-}
-
-// registerChild records a window opened by parent to show key.
-func (w *Windows) registerChild(h windowHandle, app *App, parent uint, key string) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if _, ok := w.wins[parent]; !ok {
-		return fmt.Errorf("open window for %s: parent %d: %w", key, parent, errUnknownWindow)
+	return &Windows{
+		wins:      map[string]*winEntry{},
+		newWindow: func(name string, _ *session.Session, _ *App) windowHandle { return nopWindow(name) },
+		quitApp:   func() {},
 	}
-	w.wins[h.ID()] = &winEntry{app: app, handle: h, parent: parent, hasParent: true, key: key}
+}
+
+// nopWindow is a window handle that does nothing, used until runGUI sets
+// Windows.newWindow.
+type nopWindow string
+
+func (n nopWindow) Name() string { return string(n) }
+func (nopWindow) Close()         {}
+func (nopWindow) Focus()         {}
+
+// openMain registers app as the main window and creates the window.
+func (w *Windows) openMain(app *App) windowHandle {
+	w.mu.Lock()
+	w.wins[mainWindowName] = &winEntry{app: app}
+	w.mu.Unlock()
+	return w.create(mainWindowName, app)
+}
+
+// openChild shows sess in a child window of parent. key identifies what the
+// window shows: if parent already has a window for key, that window is
+// focused instead and sess is dropped. A child's App closes only its own
+// window and its exit code is ignored.
+func (w *Windows) openChild(parent, key string, sess *session.Session) error {
+	w.mu.Lock()
+	if _, ok := w.wins[parent]; !ok {
+		w.mu.Unlock()
+		return fmt.Errorf("open window for %s: parent %s: %w", key, parent, errUnknownWindow)
+	}
+	for _, e := range w.wins {
+		if e.parent == parent && e.key == key {
+			h := e.handle
+			w.mu.Unlock()
+			if h != nil {
+				h.Focus()
+			}
+			return nil
+		}
+	}
+	w.nextChild++
+	name := fmt.Sprintf("child-%d", w.nextChild)
+	app := newApp(sess)
+	app.settings = w.settings
+	app.quit = func() {
+		if h := w.handle(name); h != nil {
+			h.Close()
+		}
+	}
+	w.wins[name] = &winEntry{app: app, parent: parent, key: key}
+	w.mu.Unlock()
+	w.create(name, app)
 	return nil
 }
 
-// byID returns the App of window id.
-func (w *Windows) byID(id uint) (*App, error) {
+// create makes the window for the registered entry name.
+func (w *Windows) create(name string, app *App) windowHandle {
+	h := w.newWindow(name, app.sess, app)
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	e, ok := w.wins[id]
+	if e, ok := w.wins[name]; ok {
+		e.handle = h
+	}
+	return h
+}
+
+// handle returns window name's handle, or nil.
+func (w *Windows) handle(name string) windowHandle {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if e, ok := w.wins[name]; ok {
+		return e.handle
+	}
+	return nil
+}
+
+// byName returns the App of window name.
+func (w *Windows) byName(name string) (*App, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	e, ok := w.wins[name]
 	if !ok {
-		return nil, fmt.Errorf("window %d: %w", id, errUnknownWindow)
+		return nil, fmt.Errorf("window %s: %w", name, errUnknownWindow)
 	}
 	return e.app, nil
 }
 
-// isMain reports whether id is the main window.
-func (w *Windows) isMain(id uint) bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return w.hasMain && w.mainID == id
-}
-
-// child returns parent's open child window showing key, if any.
-func (w *Windows) child(parent uint, key string) (windowHandle, bool) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	for _, e := range w.wins {
-		if e.hasParent && e.parent == parent && e.key == key {
-			return e.handle, true
-		}
-	}
-	return nil, false
-}
-
-// children returns the windows parent opened, directly or through them.
-func (w *Windows) children(parent uint) []windowHandle {
+// children returns the windows parent opened. Each of them closes its own
+// children in turn when it closes.
+func (w *Windows) children(parent string) []windowHandle {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	var out []windowHandle
-	queue := []uint{parent}
-	for len(queue) > 0 {
-		p := queue[0]
-		queue = queue[1:]
-		for id, e := range w.wins {
-			if e.hasParent && e.parent == p {
-				out = append(out, e.handle)
-				queue = append(queue, id)
-			}
+	for _, e := range w.wins {
+		if e.parent == parent && e.handle != nil {
+			out = append(out, e.handle)
 		}
 	}
 	return out
 }
 
-// remove forgets window id once it has closed.
-func (w *Windows) remove(id uint) {
+// closed is called once window name has closed: it forgets the window and
+// closes the windows it opened. When the main window closes, the
+// application ends.
+func (w *Windows) closed(name string) {
+	kids := w.children(name)
 	w.mu.Lock()
-	defer w.mu.Unlock()
-	delete(w.wins, id)
+	delete(w.wins, name)
+	w.mu.Unlock()
+	for _, h := range kids {
+		h.Close()
+	}
+	if name == mainWindowName {
+		w.quitApp()
+	}
 }
 
 // errNoWindow is returned for a bound call that did not come from a window.
@@ -134,7 +186,7 @@ func (w *Windows) caller(ctx context.Context) (*App, error) {
 	if !ok {
 		return nil, errNoWindow
 	}
-	return w.byID(win.ID())
+	return w.byName(win.Name())
 }
 
 // stateless serves the bound methods that use no session.

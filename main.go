@@ -140,19 +140,27 @@ func runGUI(sess *session.Session, cfg config.Config) int {
 		},
 	})
 	app.quit = wails.Quit
-
-	opts := windowOptions(sess, cfg)
-	opts.Name = mainWindowName
-	window := wails.Window.NewWithOptions(opts)
-	wins.registerMain(window, app)
-	// In merge mode the frontend guards the close button, so unsaved edits
-	// are confirmed the same way as Cancel (see App.GuardClose).
-	window.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
-		if app.interceptClose(time.Now()) {
-			e.Cancel()
-			wails.Event.Emit(closeRequestedEvent(window.Name()))
-		}
-	})
+	wins.quitApp = wails.Quit
+	wins.settings = app.settings
+	wins.newWindow = func(name string, sess *session.Session, app *App) windowHandle {
+		opts := windowOptions(sess, cfg)
+		opts.Name = name
+		window := wails.Window.NewWithOptions(opts)
+		// In merge mode the frontend guards the close button, so unsaved
+		// edits are confirmed the same way as Cancel (see App.GuardClose).
+		window.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+			if app.interceptClose(time.Now()) {
+				e.Cancel()
+				wails.Event.Emit(closeRequestedEvent(name))
+			}
+		})
+		// Runs only when no hook cancelled the close.
+		window.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+			wins.closed(name)
+		})
+		return window
+	}
+	wins.openMain(app)
 
 	if err := wails.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "mergediff: %v\n", err)
@@ -161,7 +169,7 @@ func runGUI(sess *session.Session, cfg config.Config) int {
 	return app.code()
 }
 
-// windowOptions configures the main window from the session and settings.
+// windowOptions configures a window from its session and the settings.
 func windowOptions(sess *session.Session, cfg config.Config) application.WebviewWindowOptions {
 	opts := application.WebviewWindowOptions{
 		Title:  "mergediff — " + sess.Title,

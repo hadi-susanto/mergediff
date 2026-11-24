@@ -2,75 +2,183 @@ package main
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/hadi-susanto/mergediff/internal/session"
 )
 
-// fakeWindow is a windowHandle that records Close and Focus calls.
+// fakeWindow is a windowHandle that records Close and Focus calls. Closing
+// it reports the close to the registry, as the real window's
+// WindowClosing listener does.
 type fakeWindow struct {
-	id      uint
 	name    string
+	wins    *Windows
 	closed  int
 	focused int
 }
 
-func (f *fakeWindow) ID() uint     { return f.id }
 func (f *fakeWindow) Name() string { return f.name }
-func (f *fakeWindow) Close()       { f.closed++ }
 func (f *fakeWindow) Focus()       { f.focused++ }
+func (f *fakeWindow) Close() {
+	f.closed++
+	f.wins.closed(f.name)
+}
 
-func TestWindowsRegistry(t *testing.T) {
+// fakeWindows returns a registry whose windows are fakes, a map of the
+// windows it created by name, and a counter of application quits.
+func fakeWindows() (*Windows, map[string]*fakeWindow, *int) {
 	w := newWindows()
-	mainApp := newApp(&session.Session{Mode: session.Diff})
-	main := &fakeWindow{id: 1, name: "main"}
-	w.registerMain(main, mainApp)
-
-	if got, err := w.byID(1); err != nil || got != mainApp {
-		t.Fatalf("byID(main) = %p, %v; want the main App", got, err)
+	created := map[string]*fakeWindow{}
+	quits := 0
+	w.newWindow = func(name string, _ *session.Session, _ *App) windowHandle {
+		f := &fakeWindow{name: name, wins: w}
+		created[name] = f
+		return f
 	}
-	if !w.isMain(1) {
-		t.Error("isMain(1) = false")
+	w.quitApp = func() { quits++ }
+	return w, created, &quits
+}
+
+func diffSession() *session.Session { return &session.Session{Mode: session.Diff} }
+
+func TestWindowsOpenChild(t *testing.T) {
+	w, created, _ := fakeWindows()
+	mainApp := newApp(diffSession())
+	w.openMain(mainApp)
+	if got, err := w.byName(mainWindowName); err != nil || got != mainApp {
+		t.Fatalf("byName(main) = %p, %v; want the main App", got, err)
 	}
 
-	childApp := newApp(&session.Session{Mode: session.Diff})
-	child := &fakeWindow{id: 2, name: "child-2"}
-	if err := w.registerChild(child, childApp, 1, "a/b.txt"); err != nil {
+	if err := w.openChild(mainWindowName, "a/b.txt", diffSession()); err != nil {
 		t.Fatal(err)
 	}
-	grandchild := &fakeWindow{id: 3, name: "child-3"}
-	if err := w.registerChild(grandchild, newApp(&session.Session{Mode: session.Diff}), 2, "x"); err != nil {
-		t.Fatal(err)
+	if len(created) != 2 {
+		t.Fatalf("%d windows created, want 2", len(created))
 	}
-	if w.isMain(2) {
-		t.Error("isMain(child) = true")
+	child := created["child-1"]
+	if child == nil {
+		t.Fatalf("no window child-1; created %v", created)
 	}
-	if got, err := w.byID(2); err != nil || got != childApp {
-		t.Fatalf("byID(child) = %p, %v; want the child App", got, err)
-	}
-	if h, ok := w.child(1, "a/b.txt"); !ok || h != child {
-		t.Errorf("child(1, a/b.txt) = %v, %v; want the child window", h, ok)
-	}
-	if _, ok := w.child(1, "other"); ok {
-		t.Error("child(1, other) found a window")
-	}
-	if got := w.children(1); len(got) != 2 {
-		t.Errorf("children(main) = %d windows, want 2 (child and grandchild)", len(got))
+	childApp, err := w.byName("child-1")
+	if err != nil || childApp == mainApp {
+		t.Fatalf("byName(child-1) = %p, %v; want its own App", childApp, err)
 	}
 
-	w.remove(2)
-	if _, err := w.byID(2); !errors.Is(err, errUnknownWindow) {
-		t.Errorf("byID(removed) error = %v, want errUnknownWindow", err)
+	// Opening the same key again focuses the existing window.
+	if err := w.openChild(mainWindowName, "a/b.txt", diffSession()); err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := w.child(1, "a/b.txt"); ok {
-		t.Error("removed child still found")
+	if len(created) != 2 || child.focused != 1 {
+		t.Errorf("reopening a/b.txt: %d windows, focused %d times; want 2 windows, focused once", len(created), child.focused)
+	}
+
+	// A child's Quit closes only that window.
+	childApp.Quit(exitOK)
+	if child.closed != 1 {
+		t.Errorf("child closed %d times after Quit, want 1", child.closed)
+	}
+	if _, err := w.byName("child-1"); !errors.Is(err, errUnknownWindow) {
+		t.Errorf("byName(closed child) error = %v, want errUnknownWindow", err)
+	}
+	if created[mainWindowName].closed != 0 {
+		t.Error("closing the child closed the main window")
 	}
 }
 
-func TestWindowsRegisterChildUnknownParent(t *testing.T) {
-	w := newWindows()
-	err := w.registerChild(&fakeWindow{id: 5}, newApp(&session.Session{Mode: session.Diff}), 99, "k")
-	if !errors.Is(err, errUnknownWindow) {
-		t.Fatalf("registerChild with unknown parent: %v, want errUnknownWindow", err)
+func TestWindowsOpenChildUnknownParent(t *testing.T) {
+	w, _, _ := fakeWindows()
+	if err := w.openChild("nope", "k", diffSession()); !errors.Is(err, errUnknownWindow) {
+		t.Fatalf("openChild with unknown parent: %v, want errUnknownWindow", err)
+	}
+}
+
+func TestWindowsMainClosesChildren(t *testing.T) {
+	w, created, quits := fakeWindows()
+	w.openMain(newApp(diffSession()))
+	for _, key := range []string{"a", "b"} {
+		if err := w.openChild(mainWindowName, key, diffSession()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A grandchild, opened by a child.
+	if err := w.openChild("child-1", "c", diffSession()); err != nil {
+		t.Fatal(err)
+	}
+
+	created[mainWindowName].Close()
+	for _, name := range []string{"child-1", "child-2", "child-3"} {
+		if created[name].closed != 1 {
+			t.Errorf("%s closed %d times, want 1", name, created[name].closed)
+		}
+	}
+	if *quits != 1 {
+		t.Errorf("application quit %d times, want 1", *quits)
+	}
+}
+
+// A second session saving, quitting or closing does not change the main
+// session's exit code (Phase 1 acceptance).
+func TestWindowsChildDoesNotAffectMainExitCode(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, text string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	load := func(out string) *session.Session {
+		s, err := session.LoadMerge(write("base", "a\n"), write("local", "b\n"), write("remote", "c\n"), filepath.Join(dir, out), false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+
+	w, created, quits := fakeWindows()
+	mainApp := newApp(load("main.out"))
+	mainQuits := 0
+	mainApp.quit = func() { mainQuits++ }
+	w.openMain(mainApp)
+	if c := mainApp.code(); c != exitCancel {
+		t.Fatalf("main exit code before any action = %d, want %d", c, exitCancel)
+	}
+
+	if err := w.openChild(mainWindowName, "first", load("child1.out")); err != nil {
+		t.Fatal(err)
+	}
+	child, err := w.byName("child-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := child.Save("merged\n"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(filepath.Join(dir, "child1.out")); err != nil || string(got) != "merged\n" {
+		t.Fatalf("child saved %q, %v; want %q", got, err, "merged\n")
+	}
+	child.Quit(exitOK)
+
+	// A child closed by its close button (no Quit).
+	if err := w.openChild(mainWindowName, "second", load("child2.out")); err != nil {
+		t.Fatal(err)
+	}
+	created["child-2"].Close()
+
+	if c := mainApp.code(); c != exitCancel {
+		t.Errorf("main exit code after child save/quit/close = %d, want %d", c, exitCancel)
+	}
+	if mainQuits != 0 || *quits != 0 {
+		t.Errorf("children ended the main window (%d) or the application (%d)", mainQuits, *quits)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "main.out")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the main MERGED file was written by a child: %v", err)
+	}
+
+	mainApp.Quit(exitOK)
+	if c := mainApp.code(); c != exitOK || mainQuits != 1 {
+		t.Errorf("main Quit(0): code %d, quits %d; want 0, 1", c, mainQuits)
 	}
 }
