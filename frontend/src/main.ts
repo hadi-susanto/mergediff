@@ -1,5 +1,5 @@
 import { Events } from "@wailsio/runtime";
-import * as App from "../bindings/github.com/hadi-susanto/mergediff/app";
+import * as Backend from "../bindings/github.com/hadi-susanto/mergediff/windows";
 import { Mode, type Session } from "../bindings/github.com/hadi-susanto/mergediff/internal/session/models";
 import { showError } from "./dialogs.ts";
 import { renderDiffView } from "./diffview.ts";
@@ -28,7 +28,7 @@ function baseName(path: string): string {
 }
 
 function quit(code: number): void {
-  App.Quit(code).catch((err) => console.error("quit failed", err));
+  Backend.Quit(code).catch((err) => console.error("quit failed", err));
 }
 
 /** The generated Chunk type uses enums; the frontend logic uses string unions. */
@@ -43,7 +43,7 @@ function setStatus(session: Session, version: string, left: string): void {
 }
 
 function charDiff(left: string, right: string): Promise<CharSpan[]> {
-  return App.CharDiff(left, right).then((spans) => (spans ?? []) as unknown as CharSpan[]);
+  return Backend.CharDiff(left, right).then((spans) => (spans ?? []) as unknown as CharSpan[]);
 }
 
 /** Sets the "theme" setting; it starts from the window URL (see main.go). */
@@ -54,13 +54,13 @@ const setTheme = installTheme(
 );
 
 async function main(): Promise<void> {
-  App.Settings()
+  Backend.Settings()
     .then((settings) => setTheme(settings?.theme))
     .catch((err) => console.error("loading settings failed", err));
   let session: Session;
   let version: string;
   try {
-    [session, version] = await Promise.all([App.LoadSession(), App.Version()]);
+    [session, version] = await Promise.all([Backend.LoadSession(), Backend.Version()]);
   } catch (err) {
     showError(`Could not load the files: ${err}`, () => quit(EXIT_ERROR));
     return;
@@ -74,7 +74,7 @@ async function main(): Promise<void> {
       left: scratch ? { title: "Left", tooltip: "", text: "" } : { title: baseName(leftPath), tooltip: leftPath, text: session.local },
       right: scratch ? { title: "Right", tooltip: "", text: "" } : { title: baseName(rightPath), tooltip: rightPath, text: session.remote },
       chunks: chunksOf(session),
-      compare: scratch ? (l, r) => App.Compare(l, r).then((c) => (c ?? []) as unknown as MergeChunk[]) : undefined,
+      compare: scratch ? (l, r) => Backend.Compare(l, r).then((c) => (c ?? []) as unknown as MergeChunk[]) : undefined,
       charDiff,
       close: () => quit(EXIT_OK),
       status: (text) => (document.getElementById("status-left")!.textContent = text),
@@ -91,15 +91,15 @@ async function main(): Promise<void> {
         autoApplied: session.autoApplied,
       },
       {
-        save: (result) => App.Save(result),
+        save: (result) => Backend.Save(result),
         quit,
         charDiff,
         guardClose(handler) {
           Events.On(CLOSE_REQUESTED, () => {
-            App.CloseRequestSeen().catch((err) => console.error("acknowledging close failed", err));
+            Backend.CloseRequestSeen().catch((err) => console.error("acknowledging close failed", err));
             handler();
           });
-          App.GuardClose(true).catch((err) => console.error("guarding close failed", err));
+          Backend.GuardClose(true).catch((err) => console.error("guarding close failed", err));
         },
       },
     );
