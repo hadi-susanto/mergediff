@@ -117,7 +117,7 @@ func TestCompare(t *testing.T) {
 			l, r := trees(t)
 			mkTree(t, l, tt.left)
 			mkTree(t, r, tt.right)
-			entries, err := Compare(l, r)
+			entries, err := Compare(l, r, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -132,7 +132,7 @@ func TestComparePaths(t *testing.T) {
 	l, r := trees(t)
 	mkTree(t, l, map[string]string{"a/both.txt": "1\n", "a/left.txt": "12\n"})
 	mkTree(t, r, map[string]string{"a/both.txt": "123\n"})
-	entries, err := Compare(l, r)
+	entries, err := Compare(l, r, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +160,7 @@ func TestCompareSymlinks(t *testing.T) {
 	symlink(t, r, "otherdir", filepath.Join(outside, "dir2"))
 	symlink(t, r, "newdir", filepath.Join(outside, "dir1"))
 
-	entries, err := Compare(l, r)
+	entries, err := Compare(l, r, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestCompareRootIsSymlink(t *testing.T) {
 	if err := os.Symlink(r, link); err != nil {
 		t.Skipf("symlinks not available: %v", err)
 	}
-	entries, err := Compare(l, link)
+	entries, err := Compare(l, link, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,10 +200,10 @@ func TestCompareBadRoot(t *testing.T) {
 	l, _ := trees(t)
 	file := filepath.Join(l, "f")
 	mkTree(t, l, map[string]string{"f": "x"})
-	if _, err := Compare(l, file); !errors.Is(err, errNotDir) {
+	if _, err := Compare(l, file, nil); !errors.Is(err, errNotDir) {
 		t.Errorf("RIGHT is a file: %v, want errNotDir", err)
 	}
-	if _, err := Compare(filepath.Join(l, "missing"), l); !errors.Is(err, os.ErrNotExist) {
+	if _, err := Compare(filepath.Join(l, "missing"), l, nil); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("LEFT missing: %v, want ErrNotExist", err)
 	}
 }
@@ -220,7 +220,7 @@ func TestCompareUnreadableDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.Chmod(locked, 0o755) })
-	entries, err := Compare(l, r)
+	entries, err := Compare(l, r, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -21,6 +21,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as diff$0 from "./internal/diff/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as dirdiff$0 from "./internal/dirdiff/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as merge$0 from "./internal/merge/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -45,6 +48,21 @@ export function CloseRequestSeen(): $CancellablePromise<void> {
  */
 export function Compare(left: string, right: string): $CancellablePromise<merge$0.Chunk[] | null> {
     return $Call.ByID(2292572938, left, right);
+}
+
+/**
+ * DirEntries waits for the calling window's directory comparison and
+ * returns its entries. The frontend shows progress meanwhile.
+ */
+export function DirEntries(): $CancellablePromise<dirdiff$0.Entry[] | null> {
+    return $Call.ByID(3391285058);
+}
+
+/**
+ * DirProgress reports how far the calling window's directory comparison got.
+ */
+export function DirProgress(): $CancellablePromise<dirdiff$0.Snapshot> {
+    return $Call.ByID(453018277);
 }
 
 /**

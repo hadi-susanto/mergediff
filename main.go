@@ -67,7 +67,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return exitError
 		}
 		if dirs {
-			sess, err = session.LoadDirDiff(opts.left, opts.right)
+			sess, err = session.StartDirDiff(opts.left, opts.right)
 		} else {
 			sess, err = session.LoadDiff(opts.left, opts.right)
 		}

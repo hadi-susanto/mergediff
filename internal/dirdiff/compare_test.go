@@ -33,7 +33,7 @@ func TestCompareContents(t *testing.T) {
 		"big-end":      string(bigEnd),
 		"big-mid":      string(bigMid),
 	})
-	entries, err := Compare(l, r)
+	entries, err := Compare(l, r, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestCompareUnreadableFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	entries, err := Compare(l, r)
+	entries, err := Compare(l, r, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

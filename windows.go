@@ -9,6 +9,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/hadi-susanto/mergediff/internal/diff"
+	"github.com/hadi-susanto/mergediff/internal/dirdiff"
 	"github.com/hadi-susanto/mergediff/internal/merge"
 	"github.com/hadi-susanto/mergediff/internal/session"
 )
@@ -203,6 +204,25 @@ func (w *Windows) LoadSession(ctx context.Context) (session.Session, error) {
 		return session.Session{}, err
 	}
 	return app.LoadSession()
+}
+
+// DirEntries waits for the calling window's directory comparison and
+// returns its entries. The frontend shows progress meanwhile.
+func (w *Windows) DirEntries(ctx context.Context) ([]dirdiff.Entry, error) {
+	app, err := w.caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return app.DirEntries()
+}
+
+// DirProgress reports how far the calling window's directory comparison got.
+func (w *Windows) DirProgress(ctx context.Context) (dirdiff.Snapshot, error) {
+	app, err := w.caller(ctx)
+	if err != nil {
+		return dirdiff.Snapshot{}, err
+	}
+	return app.DirProgress(), nil
 }
 
 // Save writes the calling window's merge result.

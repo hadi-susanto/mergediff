@@ -28,6 +28,26 @@ export interface Entry {
 }
 
 /**
+ * Snapshot is a Progress at one moment.
+ */
+export interface Snapshot {
+    /**
+     * files found in both trees so far
+     */
+    "found": number;
+
+    /**
+     * entries whose status is settled
+     */
+    "compared": number;
+
+    /**
+     * the comparison has finished
+     */
+    "done": boolean;
+}
+
+/**
  * Status is how a file differs between the two trees.
  */
 export enum Status {

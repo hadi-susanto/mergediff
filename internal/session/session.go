@@ -50,11 +50,10 @@ type Session struct {
 	// AutoApplied reports that InitialResult already contains every
 	// non-conflicting chunk (--auto-apply), so the UI marks them applied.
 	AutoApplied bool `json:"autoApplied"`
-	// Entries are the files of both trees, sorted by path (dirdiff only).
-	Entries []dirdiff.Entry `json:"entries"`
 
 	eol    textio.EOL
 	output string
+	dir    *dirCompare // dirdiff only
 }
 
 // LoadDiff loads LEFT and RIGHT for a read-only two-way diff.
@@ -134,23 +133,59 @@ func (s *Session) Save(result string) error {
 	return nil
 }
 
-// LoadDirDiff compares the directories LEFT and RIGHT. The entries
-// include unchanged files; their line counts are computed separately
-// (dirdiff.StatsAll), so the list can be shown first.
-func LoadDirDiff(left, right string) (*Session, error) {
-	entries, err := dirdiff.Compare(left, right)
-	if err != nil {
-		return nil, err
+// ErrNotDirDiff is returned by DirEntries outside dirdiff mode.
+var ErrNotDirDiff = errors.New("not a directory comparison")
+
+// dirCompare is a directory comparison running in the background.
+type dirCompare struct {
+	progress dirdiff.Progress
+	done     chan struct{} // closed when entries and err are set
+	entries  []dirdiff.Entry
+	err      error
+}
+
+// StartDirDiff checks that LEFT and RIGHT are directories and starts
+// comparing them in the background, so the window can open at once.
+// DirEntries waits for the result; DirProgress reports how far it got.
+func StartDirDiff(left, right string) (*Session, error) {
+	if err := dirdiff.CheckRoot(left); err != nil {
+		return nil, fmt.Errorf("read LEFT: %w", err)
 	}
+	if err := dirdiff.CheckRoot(right); err != nil {
+		return nil, fmt.Errorf("read RIGHT: %w", err)
+	}
+	c := &dirCompare{done: make(chan struct{})}
+	go func() {
+		defer close(c.done)
+		c.entries, c.err = dirdiff.Compare(left, right, &c.progress)
+	}()
 	return &Session{
-		Mode:    DirDiff,
-		Paths:   []string{left, right},
-		Title:   "Compare directories",
-		Chunks:  []merge.Chunk{},
-		Entries: entries,
-		EOL:     textio.LF.Name(),
-		eol:     textio.LF,
+		Mode:   DirDiff,
+		Paths:  []string{left, right},
+		Title:  "Compare directories",
+		Chunks: []merge.Chunk{},
+		EOL:    textio.LF.Name(),
+		eol:    textio.LF,
+		dir:    c,
 	}, nil
+}
+
+// DirEntries waits for the directory comparison and returns the files of
+// both trees, sorted by path, unchanged files included.
+func (s *Session) DirEntries() ([]dirdiff.Entry, error) {
+	if s.dir == nil {
+		return nil, ErrNotDirDiff
+	}
+	<-s.dir.done
+	return s.dir.entries, s.dir.err
+}
+
+// DirProgress reports how far the directory comparison got.
+func (s *Session) DirProgress() dirdiff.Snapshot {
+	if s.dir == nil {
+		return dirdiff.Snapshot{Done: true}
+	}
+	return s.dir.progress.Snapshot()
 }
 
 // NewScratch returns an empty scratch session (mergediff without arguments).

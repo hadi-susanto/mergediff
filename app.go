@@ -6,6 +6,7 @@ import (
 
 	"github.com/hadi-susanto/mergediff/internal/config"
 	"github.com/hadi-susanto/mergediff/internal/diff"
+	"github.com/hadi-susanto/mergediff/internal/dirdiff"
 	"github.com/hadi-susanto/mergediff/internal/merge"
 	"github.com/hadi-susanto/mergediff/internal/session"
 )
@@ -71,6 +72,20 @@ func (a *App) CharDiff(left, right string) []diff.Span {
 		return []diff.Span{}
 	}
 	return spans
+}
+
+// DirEntries waits for the directory comparison and returns its entries.
+func (a *App) DirEntries() ([]dirdiff.Entry, error) {
+	entries, err := a.sess.DirEntries()
+	if err == nil && entries == nil {
+		entries = []dirdiff.Entry{}
+	}
+	return entries, err
+}
+
+// DirProgress reports how far the directory comparison got.
+func (a *App) DirProgress() dirdiff.Snapshot {
+	return a.sess.DirProgress()
 }
 
 // Save writes the merge result to MERGED with the original line endings.

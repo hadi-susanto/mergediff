@@ -26,7 +26,7 @@ func TestStats(t *testing.T) {
 		"latin.txt": "caf\xe8\n",
 		"eol.txt":   "no newline\n",
 	})
-	entries, err := Compare(l, r)
+	entries, err := Compare(l, r, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestStatsLargeFile(t *testing.T) {
 	large := strings.Repeat("y\n", MaxOpenSize/2+1) // just over 5 MB
 	mkTree(t, l, map[string]string{"big.txt": small, "gone.txt": large})
 	mkTree(t, r, map[string]string{"big.txt": large, "huge.txt": large})
-	entries, err := Compare(l, r)
+	entries, err := Compare(l, r, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestStatsAll(t *testing.T) {
 	}
 	mkTree(t, l, map[string]string{"same": "1\n"})
 	mkTree(t, r, files)
-	entries, err := Compare(l, r)
+	entries, err := Compare(l, r, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

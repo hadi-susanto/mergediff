@@ -22,7 +22,7 @@ func workers() int {
 // parallel. Modified entries with equal sizes become Unchanged when their
 // bytes are equal. Every other file is opened once, so an unreadable file
 // shows as Error now rather than failing later.
-func compareContents(entries []Entry) {
+func compareContents(entries []Entry, p *Progress) {
 	jobs := make(chan *Entry)
 	var wg sync.WaitGroup
 	for range workers() {
@@ -31,14 +31,19 @@ func compareContents(entries []Entry) {
 			defer wg.Done()
 			for e := range jobs {
 				check(e)
+				p.addCompared(1)
 			}
 		}()
 	}
+	var settled int64 // entries that need no check
 	for i := range entries {
 		if entries[i].Note == "" && entries[i].Status != Error && entries[i].Status != Unchanged {
 			jobs <- &entries[i]
+		} else {
+			settled++
 		}
 	}
+	p.addCompared(settled)
 	close(jobs)
 	wg.Wait()
 }

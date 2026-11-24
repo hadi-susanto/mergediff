@@ -244,7 +244,7 @@ func TestScratchAndCompare(t *testing.T) {
 	}
 }
 
-func TestLoadDirDiff(t *testing.T) {
+func TestStartDirDiff(t *testing.T) {
 	dir := t.TempDir()
 	left, right := filepath.Join(dir, "l"), filepath.Join(dir, "r")
 	for _, d := range []string{left, right} {
@@ -256,19 +256,31 @@ func TestLoadDirDiff(t *testing.T) {
 	write(t, right, "same.txt", "x\n")
 	write(t, right, "new.txt", "y\n")
 
-	s, err := LoadDirDiff(left, right)
+	s, err := StartDirDiff(left, right)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if s.Mode != DirDiff || s.Title != "Compare directories" || !reflect.DeepEqual(s.Paths, []string{left, right}) {
 		t.Errorf("session = %+v", s)
 	}
+	entries, err := s.DirEntries()
+	if err != nil {
+		t.Fatal(err)
+	}
 	var got []string
-	for _, e := range s.Entries {
+	for _, e := range entries {
 		got = append(got, e.Path+" "+string(e.Status))
 	}
 	if want := []string{"new.txt added", "same.txt unchanged"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("entries = %q, want %q", got, want)
+	}
+	if p := s.DirProgress(); !p.Done || p.Found != 3 || p.Compared != 2 {
+		t.Errorf("progress after the comparison = %+v, want done, 3 found, 2 compared", p)
+	}
+	// A copy (as LoadSession returns) shares the comparison.
+	c := *s
+	if again, err := c.DirEntries(); err != nil || len(again) != 2 {
+		t.Errorf("copy: %d entries, %v", len(again), err)
 	}
 	if err := s.Save("x"); !errors.Is(err, ErrNotMerge) {
 		t.Errorf("Save in dirdiff mode: %v, want ErrNotMerge", err)
@@ -277,18 +289,28 @@ func TestLoadDirDiff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), `"mode":"dirdiff"`) || !strings.Contains(string(data), `"entries":[{"path":"new.txt","status":"added"`) {
+	if !strings.Contains(string(data), `"mode":"dirdiff"`) {
 		t.Errorf("JSON = %s", data)
 	}
 }
 
-func TestLoadDirDiffErrors(t *testing.T) {
+func TestStartDirDiffErrors(t *testing.T) {
 	dir := t.TempDir()
 	file := write(t, dir, "f.txt", "x")
-	if _, err := LoadDirDiff(dir, file); err == nil || !strings.Contains(err.Error(), "RIGHT") {
+	if _, err := StartDirDiff(dir, file); err == nil || !strings.Contains(err.Error(), "RIGHT") {
 		t.Errorf("RIGHT is a file: %v, want an error naming RIGHT", err)
 	}
-	if _, err := LoadDirDiff(filepath.Join(dir, "missing"), dir); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := StartDirDiff(filepath.Join(dir, "missing"), dir); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("LEFT missing: %v, want ErrNotExist", err)
+	}
+}
+
+func TestDirEntriesOtherModes(t *testing.T) {
+	s := NewScratch()
+	if _, err := s.DirEntries(); !errors.Is(err, ErrNotDirDiff) {
+		t.Errorf("DirEntries in scratch mode: %v, want ErrNotDirDiff", err)
+	}
+	if p := s.DirProgress(); !p.Done {
+		t.Errorf("DirProgress in scratch mode = %+v, want done", p)
 	}
 }

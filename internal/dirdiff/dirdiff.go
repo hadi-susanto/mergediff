@@ -55,13 +55,15 @@ type node struct {
 // Compare walks both trees and pairs their files by relative path. The
 // entries are sorted by path. Unchanged files are included. Only an
 // unusable root is an error; problems with single files become Error
-// entries.
-func Compare(left, right string) ([]Entry, error) {
-	l, err := walk(left)
+// entries. p (may be nil) counts the work as it goes and is marked done at
+// the end, also after an error.
+func Compare(left, right string, p *Progress) ([]Entry, error) {
+	defer p.finish()
+	l, err := walk(left, p)
 	if err != nil {
 		return nil, fmt.Errorf("read LEFT: %w", err)
 	}
-	r, err := walk(right)
+	r, err := walk(right, p)
 	if err != nil {
 		return nil, fmt.Errorf("read RIGHT: %w", err)
 	}
@@ -80,7 +82,7 @@ func Compare(left, right string) ([]Entry, error) {
 	for _, p := range paths {
 		entries = append(entries, pair(p, l[p], r[p]))
 	}
-	compareContents(entries)
+	compareContents(entries, p)
 	return entries, nil
 }
 
@@ -119,13 +121,9 @@ func pair(path string, l, r *node) Entry {
 // Symlinks to files are followed; symlinks to directories are listed as
 // one node and not entered. ".git" directories and files are skipped, and
 // empty directories leave no trace.
-func walk(root string) (map[string]*node, error) {
-	info, err := os.Stat(root)
-	if err != nil {
+func walk(root string, prog *Progress) (map[string]*node, error) {
+	if err := CheckRoot(root); err != nil {
 		return nil, err
-	}
-	if !info.IsDir() {
-		return nil, fmt.Errorf("%s: %w", root, errNotDir)
 	}
 	// Walk the resolved root: WalkDir does not enter a root that is a
 	// symlink. Paths are reported under the root as given.
@@ -173,6 +171,7 @@ func walk(root string) (map[string]*node, error) {
 				n.size = target.Size()
 			}
 			nodes[key] = n
+			prog.addFound()
 			return nil
 		}
 		info, err := d.Info()
@@ -184,6 +183,7 @@ func walk(root string) (map[string]*node, error) {
 			return nil // sockets, pipes, devices: not files to compare
 		}
 		nodes[key] = n
+		prog.addFound()
 		return nil
 	})
 	if err != nil {

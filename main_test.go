@@ -335,8 +335,11 @@ func TestRunDirectories(t *testing.T) {
 		t.Fatalf("two directories: exit %d, stderr %q", code, stderr.String())
 	}
 	s := *opened
-	if s == nil || s.Mode != session.DirDiff || len(s.Entries) != 1 || s.Entries[0].Path != "a.txt" {
-		t.Fatalf("two directories opened %+v, want a dirdiff session listing a.txt", s)
+	if s == nil || s.Mode != session.DirDiff {
+		t.Fatalf("two directories opened %+v, want a dirdiff session", s)
+	}
+	if entries, err := s.DirEntries(); err != nil || len(entries) != 1 || entries[0].Path != "a.txt" {
+		t.Fatalf("dirdiff entries %+v, %v; want a.txt", entries, err)
 	}
 
 	for _, tc := range []struct {

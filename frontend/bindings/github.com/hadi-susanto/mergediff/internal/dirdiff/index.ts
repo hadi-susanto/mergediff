@@ -6,5 +6,6 @@ export {
 } from "./models.js";
 
 export type {
-    Entry
+    Entry,
+    Snapshot
 } from "./models.js";
