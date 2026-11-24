@@ -80,6 +80,15 @@ export function LoadSession(): $CancellablePromise<session$0.Session> {
 }
 
 /**
+ * OpenEntry opens a file of the calling window's directory comparison
+ * (path relative, "/" separators) in a diff window of its own, or focuses
+ * the window already showing it.
+ */
+export function OpenEntry(path: string): $CancellablePromise<void> {
+    return $Call.ByID(2302430721, path);
+}
+
+/**
  * Quit closes the calling window. For the main window the process then
  * exits with code; a child window just closes.
  */

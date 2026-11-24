@@ -314,3 +314,69 @@ func TestDirEntriesOtherModes(t *testing.T) {
 		t.Errorf("DirProgress in scratch mode = %+v, want done", p)
 	}
 }
+
+func TestLoadPairMissingSides(t *testing.T) {
+	dir := t.TempDir()
+	f := write(t, dir, "a.go", "one\r\ntwo\r\n")
+	for _, tc := range []struct{ left, right, local, remote string }{
+		{"", f, "", "one\ntwo\n"},
+		{f, "", "one\ntwo\n", ""},
+	} {
+		s, err := LoadPair(tc.left, tc.right, "pkg/a.go")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s.Mode != Diff || s.Local != tc.local || s.Remote != tc.remote || s.Title != "pkg/a.go" ||
+			s.Language != "go" || s.EOL != "CRLF" || !reflect.DeepEqual(s.Paths, []string{tc.left, tc.right}) {
+			t.Errorf("LoadPair(%q, %q) = %+v", tc.left, tc.right, s)
+		}
+		if len(s.Chunks) == 0 {
+			t.Errorf("LoadPair(%q, %q): no chunks", tc.left, tc.right)
+		}
+	}
+}
+
+func TestEntrySession(t *testing.T) {
+	dir := t.TempDir()
+	left, right := filepath.Join(dir, "l"), filepath.Join(dir, "r")
+	os.MkdirAll(filepath.Join(left, "sub"), 0o755)
+	os.MkdirAll(right, 0o755)
+	write(t, left, "sub/m.txt", "a\n")
+	write(t, right, "sub", "now a file\n") // "sub" is a file on the right
+	write(t, right, "bin", "x\x00")
+	big := strings.Repeat("x", 5*1024*1024+1)
+	write(t, right, "big.txt", big)
+	if err := os.Symlink(dir, filepath.Join(right, "loop")); err != nil {
+		t.Skipf("symlinks not available: %v", err)
+	}
+	s, err := StartDirDiff(left, right)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	child, err := s.EntrySession("sub/m.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.Mode != Diff || child.Local != "a\n" || child.Remote != "" || child.Title != "sub/m.txt" {
+		t.Errorf("deleted file: %+v", child)
+	}
+	if child, err := s.EntrySession("sub"); err != nil || child.Remote != "now a file\n" || child.Local != "" {
+		t.Errorf("added file: %+v, %v", child, err)
+	}
+	for path, want := range map[string]error{
+		"bin":     textio.ErrBinary,
+		"big.txt": ErrCannotOpen,
+		"loop":    ErrCannotOpen,
+	} {
+		if _, err := s.EntrySession(path); !errors.Is(err, want) {
+			t.Errorf("EntrySession(%s) = %v, want %v", path, err, want)
+		}
+	}
+	if _, err := s.EntrySession("nope"); err == nil {
+		t.Error("EntrySession(unknown path) succeeded")
+	}
+	if _, err := NewScratch().EntrySession("x"); !errors.Is(err, ErrNotDirDiff) {
+		t.Errorf("EntrySession in scratch mode: %v, want ErrNotDirDiff", err)
+	}
+}

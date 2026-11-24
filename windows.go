@@ -90,15 +90,13 @@ func (w *Windows) openChild(parent, key string, sess *session.Session) error {
 		w.mu.Unlock()
 		return fmt.Errorf("open window for %s: parent %s: %w", key, parent, errUnknownWindow)
 	}
-	for _, e := range w.wins {
-		if e.parent == parent && e.key == key {
-			h := e.handle
-			w.mu.Unlock()
-			if h != nil {
-				h.Focus()
-			}
-			return nil
+	if e := w.childLocked(parent, key); e != nil {
+		h := e.handle
+		w.mu.Unlock()
+		if h != nil {
+			h.Focus()
 		}
+		return nil
 	}
 	w.nextChild++
 	name := fmt.Sprintf("child-%d", w.nextChild)
@@ -113,6 +111,46 @@ func (w *Windows) openChild(parent, key string, sess *session.Session) error {
 	w.mu.Unlock()
 	w.create(name, app)
 	return nil
+}
+
+// childLocked returns parent's child entry for key, or nil. w.mu is held.
+func (w *Windows) childLocked(parent, key string) *winEntry {
+	for _, e := range w.wins {
+		if e.parent == parent && e.key == key {
+			return e
+		}
+	}
+	return nil
+}
+
+// focusChild focuses parent's child window for key and reports whether
+// there is one.
+func (w *Windows) focusChild(parent, key string) bool {
+	w.mu.Lock()
+	e := w.childLocked(parent, key)
+	var h windowHandle
+	if e != nil {
+		h = e.handle
+	}
+	w.mu.Unlock()
+	if h != nil {
+		h.Focus()
+	}
+	return e != nil
+}
+
+// openEntry opens the directory comparison entry at path, from window
+// parent, in a child window, or focuses the one already showing it.
+func (w *Windows) openEntry(parent string, app *App, path string) error {
+	key := "entry:" + path
+	if w.focusChild(parent, key) {
+		return nil
+	}
+	sess, err := app.sess.EntrySession(path)
+	if err != nil {
+		return err
+	}
+	return w.openChild(parent, key, sess)
 }
 
 // create makes the window for the registered entry name.
@@ -183,11 +221,18 @@ var errNoWindow = errors.New("call did not come from a window")
 // caller returns the App of the window that made the bound call. Wails
 // puts the calling window in the context of every call from a webview.
 func (w *Windows) caller(ctx context.Context) (*App, error) {
+	_, app, err := w.callerName(ctx)
+	return app, err
+}
+
+// callerName is caller that also returns the calling window's name.
+func (w *Windows) callerName(ctx context.Context) (string, *App, error) {
 	win, ok := ctx.Value(application.WindowKey).(application.Window)
 	if !ok {
-		return nil, errNoWindow
+		return "", nil, errNoWindow
 	}
-	return w.byName(win.Name())
+	app, err := w.byName(win.Name())
+	return win.Name(), app, err
 }
 
 // stateless serves the bound methods that use no session.
@@ -223,6 +268,17 @@ func (w *Windows) DirProgress(ctx context.Context) (dirdiff.Snapshot, error) {
 		return dirdiff.Snapshot{}, err
 	}
 	return app.DirProgress(), nil
+}
+
+// OpenEntry opens a file of the calling window's directory comparison
+// (path relative, "/" separators) in a diff window of its own, or focuses
+// the window already showing it.
+func (w *Windows) OpenEntry(ctx context.Context, path string) error {
+	name, app, err := w.callerName(ctx)
+	if err != nil {
+		return err
+	}
+	return w.openEntry(name, app, path)
 }
 
 // Save writes the calling window's merge result.

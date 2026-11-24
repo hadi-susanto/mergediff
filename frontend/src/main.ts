@@ -2,7 +2,7 @@ import { Events, Window } from "@wailsio/runtime";
 import * as Backend from "../bindings/github.com/hadi-susanto/mergediff/windows";
 import { Mode, type Session } from "../bindings/github.com/hadi-susanto/mergediff/internal/session/models";
 import { showError } from "./dialogs.ts";
-import { renderDiffView } from "./diffview.ts";
+import { renderDiffView, type DiffPaneSpec } from "./diffview.ts";
 import { renderMerge, type Rendered } from "./merge.ts";
 import type { CharSpan, MergeChunk } from "./model.ts";
 import { setLanguage } from "./panes.ts";
@@ -28,6 +28,14 @@ const LANGUAGE_NAMES: Record<string, string> = {
 
 function baseName(path: string): string {
   return path.split(/[\\/]/).pop() || path;
+}
+
+/**
+ * A diff pane for a file. An empty path is a file missing on that side
+ * (opened from a directory comparison): empty text titled "(missing)".
+ */
+function paneSpec(path: string, text: string): DiffPaneSpec {
+  return path ? { title: baseName(path), tooltip: path, text } : { title: "(missing)", tooltip: "", text: "" };
 }
 
 function quit(code: number): void {
@@ -79,8 +87,8 @@ async function main(): Promise<void> {
     const scratch = session.mode === Mode.Scratch;
     const [leftPath = "", rightPath = ""] = session.paths ?? [];
     rendered = renderDiffView({
-      left: scratch ? { title: "Left", tooltip: "", text: "" } : { title: baseName(leftPath), tooltip: leftPath, text: session.local },
-      right: scratch ? { title: "Right", tooltip: "", text: "" } : { title: baseName(rightPath), tooltip: rightPath, text: session.remote },
+      left: scratch ? { title: "Left", tooltip: "", text: "" } : paneSpec(leftPath, session.local),
+      right: scratch ? { title: "Right", tooltip: "", text: "" } : paneSpec(rightPath, session.remote),
       chunks: chunksOf(session),
       compare: scratch ? (l, r) => Backend.Compare(l, r).then((c) => (c ?? []) as unknown as MergeChunk[]) : undefined,
       charDiff,

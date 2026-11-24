@@ -182,3 +182,47 @@ func TestWindowsChildDoesNotAffectMainExitCode(t *testing.T) {
 		t.Errorf("main Quit(0): code %d, quits %d; want 0, 1", c, mainQuits)
 	}
 }
+
+func TestWindowsOpenEntry(t *testing.T) {
+	dir := t.TempDir()
+	left, right := filepath.Join(dir, "l"), filepath.Join(dir, "r")
+	os.Mkdir(left, 0o755)
+	os.Mkdir(right, 0o755)
+	writeFile(t, left, "m.txt", "a\n")
+	writeFile(t, right, "m.txt", "b\n")
+	writeFile(t, right, "bin", "x\x00")
+	sess, err := session.StartDirDiff(left, right)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, created, _ := fakeWindows()
+	mainApp := newApp(sess)
+	w.openMain(mainApp)
+
+	if err := w.openEntry(mainWindowName, mainApp, "m.txt"); err != nil {
+		t.Fatal(err)
+	}
+	child, err := w.byName("child-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, _ := child.LoadSession()
+	if s.Mode != session.Diff || s.Local != "a\n" || s.Remote != "b\n" || s.Title != "m.txt" {
+		t.Errorf("child session = %+v", s)
+	}
+
+	// Opening it again focuses the open window.
+	if err := w.openEntry(mainWindowName, mainApp, "m.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if len(created) != 2 || created["child-1"].focused != 1 {
+		t.Errorf("reopening: %d windows, focused %d; want 2 windows, focused once", len(created), created["child-1"].focused)
+	}
+
+	if err := w.openEntry(mainWindowName, mainApp, "bin"); err == nil {
+		t.Error("opening a binary file succeeded")
+	}
+	if len(created) != 2 {
+		t.Errorf("a refused file opened a window (%d windows)", len(created))
+	}
+}

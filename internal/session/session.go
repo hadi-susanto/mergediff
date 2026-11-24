@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/hadi-susanto/mergediff/internal/dirdiff"
@@ -75,6 +76,32 @@ func LoadDiff(left, right string) (*Session, error) {
 		Remote:   r.Text,
 		Chunks:   diffChunks(l.Text, r.Text),
 		Language: Language(right),
+		EOL:      eol.Name(),
+		eol:      eol,
+	}, nil
+}
+
+// LoadPair loads two files for a read-only diff opened from a directory
+// comparison. An empty path is a file missing on that side: it shows as
+// empty text. title names the window, e.g. the file's relative path.
+func LoadPair(left, right, title string) (*Session, error) {
+	l, err := textio.ReadOptional(left)
+	if err != nil {
+		return nil, fmt.Errorf("read LEFT: %w", err)
+	}
+	r, err := textio.ReadOptional(right)
+	if err != nil {
+		return nil, fmt.Errorf("read RIGHT: %w", err)
+	}
+	eol := textio.DetectEOL(r, l)
+	return &Session{
+		Mode:     Diff,
+		Paths:    []string{left, right},
+		Title:    title,
+		Local:    l.Text,
+		Remote:   r.Text,
+		Chunks:   diffChunks(l.Text, r.Text),
+		Language: Language(title),
 		EOL:      eol.Name(),
 		eol:      eol,
 	}, nil
@@ -178,6 +205,32 @@ func (s *Session) DirEntries() ([]dirdiff.Entry, error) {
 	}
 	<-s.dir.done
 	return s.dir.entries, s.dir.err
+}
+
+// ErrCannotOpen is returned by EntrySession for an entry that cannot be
+// shown as a text diff (an error, a symlink to a directory, a large file).
+var ErrCannotOpen = errors.New("cannot be opened")
+
+// EntrySession loads the two sides of the directory comparison's entry at
+// path (relative, "/" separators) as a read-only diff. Binary and invalid
+// UTF-8 files fail with textio's errors.
+func (s *Session) EntrySession(path string) (*Session, error) {
+	entries, err := s.DirEntries()
+	if err != nil {
+		return nil, err
+	}
+	i := sort.Search(len(entries), func(i int) bool { return entries[i].Path >= path })
+	if i == len(entries) || entries[i].Path != path {
+		return nil, fmt.Errorf("%s: not in the comparison", path)
+	}
+	e := entries[i]
+	switch {
+	case e.Note != "":
+		return nil, fmt.Errorf("%s %w: %s", path, ErrCannotOpen, e.Note)
+	case e.LeftSize > dirdiff.MaxOpenSize || e.RightSize > dirdiff.MaxOpenSize:
+		return nil, fmt.Errorf("%s %w: %s", path, ErrCannotOpen, dirdiff.ReasonTooLarge)
+	}
+	return LoadPair(e.Left, e.Right, path)
 }
 
 // DirProgress reports how far the directory comparison got.
