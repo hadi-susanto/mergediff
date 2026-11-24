@@ -276,5 +276,6 @@ function renderPathBar(host: HTMLElement, left: string, right: string): void {
     r.textContent = middleEllipsis(right, perPath);
   };
   fit();
+  requestAnimationFrame(fit); // again once the layout has settled
   window.addEventListener("resize", fit);
 }

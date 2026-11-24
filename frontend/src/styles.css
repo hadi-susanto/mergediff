@@ -553,8 +553,8 @@ body {
 }
 
 .path-bar-path {
+  flex: 0 0 auto; /* dirview.ts shortens the text itself, in the middle */
   color: var(--chrome-fg);
-  overflow: hidden;
 }
 
 .path-bar-arrow {
