@@ -261,6 +261,16 @@ func (w *Windows) DirEntries(ctx context.Context) ([]dirdiff.Entry, error) {
 	return app.DirEntries()
 }
 
+// DirStats returns the line counts of the calling window's directory
+// comparison computed since the previous call.
+func (w *Windows) DirStats(ctx context.Context) (dirdiff.StatsBatch, error) {
+	app, err := w.caller(ctx)
+	if err != nil {
+		return dirdiff.StatsBatch{}, err
+	}
+	return app.DirStats()
+}
+
 // DirProgress reports how far the calling window's directory comparison got.
 func (w *Windows) DirProgress(ctx context.Context) (dirdiff.Snapshot, error) {
 	app, err := w.caller(ctx)

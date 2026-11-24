@@ -66,6 +66,14 @@ export function DirProgress(): $CancellablePromise<dirdiff$0.Snapshot> {
 }
 
 /**
+ * DirStats returns the line counts of the calling window's directory
+ * comparison computed since the previous call.
+ */
+export function DirStats(): $CancellablePromise<dirdiff$0.StatsBatch> {
+    return $Call.ByID(3288711257);
+}
+
+/**
  * GuardClose turns the calling window's close guard on or off.
  */
 export function GuardClose(on: boolean): $CancellablePromise<void> {

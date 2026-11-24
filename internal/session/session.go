@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/hadi-susanto/mergediff/internal/dirdiff"
 	"github.com/hadi-susanto/mergediff/internal/merge"
@@ -163,12 +164,17 @@ func (s *Session) Save(result string) error {
 // ErrNotDirDiff is returned by DirEntries outside dirdiff mode.
 var ErrNotDirDiff = errors.New("not a directory comparison")
 
-// dirCompare is a directory comparison running in the background.
+// dirCompare is a directory comparison running in the background: first
+// the entries, then the line counts of the changed files.
 type dirCompare struct {
 	progress dirdiff.Progress
 	done     chan struct{} // closed when entries and err are set
 	entries  []dirdiff.Entry
 	err      error
+
+	mu        sync.Mutex
+	stats     []dirdiff.PathStat // computed, not yet taken by DirStats
+	statsDone bool
 }
 
 // StartDirDiff checks that LEFT and RIGHT are directories and starts
@@ -192,8 +198,18 @@ func StartDirDiff(left, right string) (*Session, error) {
 	}
 	c := &dirCompare{done: make(chan struct{})}
 	go func() {
-		defer close(c.done)
 		c.entries, c.err = dirdiff.Compare(left, right, &c.progress)
+		close(c.done)
+		if c.err == nil {
+			dirdiff.StatsAll(c.entries, func(i int, st dirdiff.Stat) {
+				c.mu.Lock()
+				defer c.mu.Unlock()
+				c.stats = append(c.stats, dirdiff.PathStat{Path: c.entries[i].Path, Stat: st})
+			})
+		}
+		c.mu.Lock()
+		c.statsDone = true
+		c.mu.Unlock()
 	}()
 	return &Session{
 		Mode:   DirDiff,
@@ -240,6 +256,24 @@ func (s *Session) EntrySession(path string) (*Session, error) {
 		return nil, fmt.Errorf("%s %w: %s", path, ErrCannotOpen, dirdiff.ReasonTooLarge)
 	}
 	return LoadPair(e.Left, e.Right, path)
+}
+
+// DirStats returns the line counts computed since the previous call, and
+// whether all have now been delivered. They start once the entries are
+// ready; files that are not dirdiff.Counted get none.
+func (s *Session) DirStats() (dirdiff.StatsBatch, error) {
+	if s.dir == nil {
+		return dirdiff.StatsBatch{}, ErrNotDirDiff
+	}
+	c := s.dir
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	b := dirdiff.StatsBatch{Stats: c.stats, Done: c.statsDone}
+	if b.Stats == nil {
+		b.Stats = []dirdiff.PathStat{}
+	}
+	c.stats = nil
+	return b, nil
 }
 
 // DirProgress reports how far the directory comparison got.

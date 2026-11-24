@@ -83,6 +83,11 @@ func (a *App) DirEntries() ([]dirdiff.Entry, error) {
 	return entries, err
 }
 
+// DirStats returns the line counts computed since the previous call.
+func (a *App) DirStats() (dirdiff.StatsBatch, error) {
+	return a.sess.DirStats()
+}
+
 // DirProgress reports how far the directory comparison got.
 func (a *App) DirProgress() dirdiff.Snapshot {
 	return a.sess.DirProgress()

@@ -2,7 +2,12 @@
 // the list of files that differ. Opening a file shows it in a diff window of
 // its own (Backend.OpenEntry).
 
-import type { Entry, Snapshot } from "../bindings/github.com/hadi-susanto/mergediff/internal/dirdiff/models";
+import type {
+  Entry,
+  Snapshot,
+  Stat,
+  StatsBatch,
+} from "../bindings/github.com/hadi-susanto/mergediff/internal/dirdiff/models";
 import { showError } from "./dialogs.ts";
 import { middleEllipsis } from "./filelist-core.ts";
 import { FileList, renderPath, type Column } from "./filelist.ts";
@@ -12,6 +17,7 @@ import { installShortcuts } from "./keys.ts";
 export interface DirBackend {
   entries(): Promise<Entry[]>;
   progress(): Promise<Snapshot>;
+  stats(): Promise<StatsBatch>;
   open(path: string): Promise<void>;
   quit(code: number): void;
 }
@@ -27,6 +33,8 @@ export interface DirViewOptions {
 export interface DirRow {
   path: string;
   entry: Entry;
+  /** Line counts, once computed (changed files only). */
+  stat?: Stat;
 }
 
 const EXIT_OK = 0;
@@ -35,6 +43,7 @@ const HINT = "Double-click or Enter to open the file diff · F7 / Shift+F7 next 
 /** "Comparing…" shows only if the comparison takes longer than this, so a fast one never flashes it. */
 const COMPARING_DELAY_MS = 150;
 const PROGRESS_INTERVAL_MS = 200;
+const STATS_INTERVAL_MS = 150;
 const MAX_OPEN_SIZE = 5 * 1024 * 1024;
 
 const STATUS_NAMES: Record<string, string> = {
@@ -46,11 +55,27 @@ const STATUS_NAMES: Record<string, string> = {
 };
 const BADGES: Record<string, string> = { modified: "M", added: "A", deleted: "D", unchanged: "", error: "!" };
 
-/** Why a row cannot be opened, or null. */
-export function blockedReason(e: Entry): string | null {
+/** Why a row cannot be opened, or null. stat adds what reading the files found (binary, not UTF-8). */
+export function blockedReason(e: Entry, stat?: Stat): string | null {
   if (e.note) return e.note;
   if (e.leftSize > MAX_OPEN_SIZE || e.rightSize > MAX_OPEN_SIZE) return "larger than 5 MB";
-  return null;
+  return stat?.reason || null;
+}
+
+/** What the Lines column shows: line counts, or a label (muted) instead. */
+export type LinesCell = { label: string } | { added?: number; deleted?: number };
+
+export function linesCell(e: Entry, stat?: Stat): LinesCell {
+  if (e.note) return { label: e.note };
+  if (e.status === "unchanged") return { label: "" };
+  if (!stat) return { label: "…" };
+  if (stat.label) return { label: stat.label };
+  if (e.status === "added") return { added: stat.added };
+  if (e.status === "deleted") return { deleted: stat.deleted };
+  return {
+    added: stat.added > 0 || stat.deleted === 0 ? stat.added : undefined,
+    deleted: stat.deleted > 0 || stat.added === 0 ? stat.deleted : undefined,
+  };
 }
 
 /** Status bar counts: "11 changed · 184 unchanged · 2 errors". */
@@ -103,9 +128,16 @@ const COLUMNS: Column<DirRow>[] = [
     title: "Lines",
     width: "minmax(120px, 200px)",
     render(row, cell) {
-      const reason = row.entry.note;
-      cell.title = reason;
-      cell.replaceChildren(span("lines-label mono", reason || "…"));
+      const c = linesCell(row.entry, row.stat);
+      cell.title = "label" in c ? c.label : "";
+      if ("label" in c) {
+        cell.replaceChildren(span("lines-label mono", c.label));
+        return;
+      }
+      const parts: HTMLElement[] = [];
+      if (c.added !== undefined) parts.push(span("lines-added mono", `+${c.added}`));
+      if (c.deleted !== undefined) parts.push(span("lines-deleted mono", `−${c.deleted}`));
+      cell.replaceChildren(...parts);
     },
   },
   {
@@ -131,7 +163,7 @@ export function renderDirView(o: DirViewOptions): void {
 
   const list = new FileList<DirRow>({
     columns: COLUMNS,
-    blocked: (row) => blockedReason(row.entry),
+    blocked: (row) => blockedReason(row.entry, row.stat),
     open: (row) => {
       setHint();
       o.backend.open(row.path).catch((err) => showError(`Could not open ${row.path}: ${err}`));
@@ -145,7 +177,7 @@ export function renderDirView(o: DirViewOptions): void {
 
   // Next / previous file that can be opened, then open it.
   const step = (dir: 1 | -1) => {
-    const i = list.find(dir, (row) => blockedReason(row.entry) === null);
+    const i = list.find(dir, (row) => blockedReason(row.entry, row.stat) === null);
     if (i >= 0 && list.select(i)) list.openCurrent();
   };
   installShortcuts({
@@ -194,6 +226,29 @@ async function load(o: DirViewOptions, list: FileList<DirRow>, statusRight: HTML
     list.setRows(rows);
   }
   list.focus();
+  await loadStats(o, list, rows);
+}
+
+/** Fills in the line counts as the backend computes them. */
+async function loadStats(o: DirViewOptions, list: FileList<DirRow>, rows: DirRow[]): Promise<void> {
+  const index = new Map(rows.map((r, i) => [r.path, i]));
+  for (;;) {
+    let batch: StatsBatch;
+    try {
+      batch = await o.backend.stats();
+    } catch (err) {
+      console.error("line counts failed", err);
+      return;
+    }
+    for (const ps of batch.stats ?? []) {
+      const i = index.get(ps.path);
+      if (i === undefined) continue; // e.g. unchanged rows are not shown
+      rows[i].stat = ps.stat;
+      list.update(i);
+    }
+    if (batch.done) return;
+    await new Promise((resolve) => setTimeout(resolve, STATS_INTERVAL_MS));
+  }
 }
 
 /** "Left <path> ↔ Right <path>", each path shortened in the middle to fit, full path in a tooltip. */

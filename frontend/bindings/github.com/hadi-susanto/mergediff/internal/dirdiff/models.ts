@@ -28,6 +28,14 @@ export interface Entry {
 }
 
 /**
+ * PathStat is the Stat of the entry at Path.
+ */
+export interface PathStat {
+    "path": string;
+    "stat": Stat;
+}
+
+/**
  * Snapshot is a Progress at one moment.
  */
 export interface Snapshot {
@@ -43,6 +51,43 @@ export interface Snapshot {
 
     /**
      * the comparison has finished
+     */
+    "done": boolean;
+}
+
+/**
+ * Stat is the size of one entry's change.
+ */
+export interface Stat {
+    /**
+     * lines
+     */
+    "added": number;
+
+    /**
+     * lines
+     */
+    "deleted": number;
+
+    /**
+     * Label replaces the line counts when set, e.g. "binary, differs".
+     */
+    "label": string;
+
+    /**
+     * Reason says why the file cannot be opened; "" if it can.
+     */
+    "reason": string;
+}
+
+/**
+ * StatsBatch is the stats computed since the previous batch was taken.
+ */
+export interface StatsBatch {
+    "stats": PathStat[] | null;
+
+    /**
+     * Done reports that every stat has been delivered (this batch included).
      */
     "done": boolean;
 }

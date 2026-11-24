@@ -87,6 +87,7 @@ async function main(): Promise<void> {
       backend: {
         entries: () => Backend.DirEntries().then((e) => e ?? []),
         progress: () => Backend.DirProgress(),
+        stats: () => Backend.DirStats(),
         open: (path) => Backend.OpenEntry(path),
         quit,
       },

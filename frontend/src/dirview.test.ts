@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { Entry } from "../bindings/github.com/hadi-susanto/mergediff/internal/dirdiff/models";
-import { blockedReason, countsText, progressText } from "./dirview.ts";
+import type { Entry, Stat } from "../bindings/github.com/hadi-susanto/mergediff/internal/dirdiff/models";
+import { blockedReason, countsText, linesCell, progressText } from "./dirview.ts";
 
 function entry(status: string, more: Partial<Entry> = {}): Entry {
   return { path: "p", status, left: "", right: "", leftSize: 0, rightSize: 0, note: "", ...more } as Entry;
@@ -35,5 +35,43 @@ describe("countsText", () => {
 describe("progressText", () => {
   it("shows both counts with thousands separators", () => {
     assert.equal(progressText({ found: 18240, compared: 3100, done: false }), "Comparing… 18,240 files found, 3,100 compared");
+  });
+});
+
+function stat(more: Partial<Stat>): Stat {
+  return { added: 0, deleted: 0, label: "", reason: "", ...more } as Stat;
+}
+
+describe("blockedReason with line counts", () => {
+  it("binary and not UTF-8 files found while counting cannot be opened", () => {
+    assert.equal(blockedReason(entry("modified"), stat({ label: "binary, differs", reason: "binary file" })), "binary file");
+    assert.equal(blockedReason(entry("modified"), stat({ label: "not UTF-8", reason: "not valid UTF-8" })), "not valid UTF-8");
+    assert.equal(blockedReason(entry("modified"), stat({ added: 3 })), null);
+  });
+});
+
+describe("linesCell", () => {
+  it("waits for the counts", () => {
+    assert.deepEqual(linesCell(entry("modified")), { label: "…" });
+  });
+  it("shows the note of errors and symlinks to directories", () => {
+    assert.deepEqual(linesCell(entry("error", { note: "permission denied" })), { label: "permission denied" });
+  });
+  it("shows nothing for unchanged files", () => {
+    assert.deepEqual(linesCell(entry("unchanged")), { label: "" });
+  });
+  it("shows a label instead of counts", () => {
+    assert.deepEqual(linesCell(entry("modified"), stat({ label: "line endings" })), { label: "line endings" });
+  });
+  it("added and deleted files show one count", () => {
+    assert.deepEqual(linesCell(entry("added"), stat({ added: 63 })), { added: 63 });
+    assert.deepEqual(linesCell(entry("deleted"), stat({ deleted: 212 })), { deleted: 212 });
+    assert.deepEqual(linesCell(entry("added"), stat({})), { added: 0 });
+  });
+  it("modified files show the non-zero counts", () => {
+    assert.deepEqual(linesCell(entry("modified"), stat({ added: 48, deleted: 12 })), { added: 48, deleted: 12 });
+    assert.deepEqual(linesCell(entry("modified"), stat({ added: 2 })), { added: 2, deleted: undefined });
+    assert.deepEqual(linesCell(entry("modified"), stat({ deleted: 2 })), { added: undefined, deleted: 2 });
+    assert.deepEqual(linesCell(entry("modified"), stat({})), { added: 0, deleted: 0 });
   });
 });

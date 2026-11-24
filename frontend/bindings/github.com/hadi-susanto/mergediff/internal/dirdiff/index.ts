@@ -7,5 +7,8 @@ export {
 
 export type {
     Entry,
-    Snapshot
+    PathStat,
+    Snapshot,
+    Stat,
+    StatsBatch
 } from "./models.js";

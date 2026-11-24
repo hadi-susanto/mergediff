@@ -39,6 +39,19 @@ type Stat struct {
 	Reason string `json:"reason"`
 }
 
+// PathStat is the Stat of the entry at Path.
+type PathStat struct {
+	Path string `json:"path"`
+	Stat Stat   `json:"stat"`
+}
+
+// StatsBatch is the stats computed since the previous batch was taken.
+type StatsBatch struct {
+	Stats []PathStat `json:"stats"`
+	// Done reports that every stat has been delivered (this batch included).
+	Done bool `json:"done"`
+}
+
 // Counted reports whether s is worth computing for e: a changed file
 // that could be read.
 func Counted(e Entry) bool {
