@@ -3,6 +3,9 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as dirdiff$0 from "../dirdiff/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as merge$0 from "../merge/models.js";
 
 /**
@@ -22,6 +25,11 @@ export enum Mode {
      * text into both panes and compares it with Compare.
      */
     Scratch = "scratch",
+
+    /**
+     * DirDiff lists the files that differ between two directories.
+     */
+    DirDiff = "dirdiff",
 };
 
 /**
@@ -35,7 +43,7 @@ export interface Session {
     "mode": Mode;
 
     /**
-     * merge: BASE, LOCAL, REMOTE, MERGED; diff: LEFT, RIGHT
+     * merge: BASE, LOCAL, REMOTE, MERGED; diff, dirdiff: LEFT, RIGHT
      */
     "paths": string[] | null;
 
@@ -64,4 +72,9 @@ export interface Session {
      * non-conflicting chunk (--auto-apply), so the UI marks them applied.
      */
     "autoApplied": boolean;
+
+    /**
+     * Entries are the files of both trees, sorted by path (dirdiff only).
+     */
+    "entries": dirdiff$0.Entry[] | null;
 }

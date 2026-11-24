@@ -61,7 +61,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case cmdMerge:
 		sess, err = session.LoadMerge(opts.base, opts.local, opts.remote, opts.output, opts.autoApply)
 	case cmdDiff:
-		sess, err = session.LoadDiff(opts.left, opts.right)
+		var dirs bool
+		if dirs, err = bothDirs(opts.left, opts.right); err != nil {
+			printUsageError(stderr, err)
+			return exitError
+		}
+		if dirs {
+			sess, err = session.LoadDirDiff(opts.left, opts.right)
+		} else {
+			sess, err = session.LoadDiff(opts.left, opts.right)
+		}
 	case cmdScratch:
 		sess = session.NewScratch()
 	}
@@ -75,6 +84,25 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 	return startGUI(sess, cfg)
+}
+
+// bothDirs reports whether LEFT and RIGHT are both directories (a
+// directory diff). One directory and one file is a usage error. A path
+// that cannot be read counts as a file, so loading it reports the error.
+func bothDirs(left, right string) (bool, error) {
+	l, r := isDir(left), isDir(right)
+	switch {
+	case l && !r:
+		return false, usagef("LEFT %s is a directory but RIGHT %s is a file; compare two files or two directories", left, right)
+	case r && !l:
+		return false, usagef("LEFT %s is a file but RIGHT %s is a directory; compare two files or two directories", left, right)
+	}
+	return l && r, nil
+}
+
+func isDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 // configPath locates the config file; a variable so tests can redirect it.

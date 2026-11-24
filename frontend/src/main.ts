@@ -69,6 +69,11 @@ async function main(): Promise<void> {
     return;
   }
   document.title = `mergediff — ${session.title}`;
+  if (session.mode === Mode.DirDiff) {
+    // Placeholder until the directory view exists.
+    showError("The directory view is not built yet.", () => quit(EXIT_OK));
+    return;
+  }
   let rendered: Rendered;
   if (session.mode === Mode.Diff || session.mode === Mode.Scratch) {
     const scratch = session.mode === Mode.Scratch;

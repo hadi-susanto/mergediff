@@ -19,6 +19,7 @@ const (
 var usage = `Usage:
   mergediff BASE LOCAL REMOTE -o MERGED [--auto-apply]    3-way merge
   mergediff LEFT RIGHT                                    2-way diff (read-only)
+  mergediff LEFTDIR RIGHTDIR                              compare two directories (git difftool -d)
   mergediff                                               scratch diff: paste text into both panes
   mergediff settings [list | get KEY | set KEY VALUE | unset KEY | path]
                                                           view or change saved settings
@@ -35,7 +36,7 @@ Options:
 
 ` + settingsFlagsUsage() + `
 Exit codes:
-  0  merge saved with all conflicts resolved, or diff window closed
+  0  merge saved with all conflicts resolved, or diff or directory window closed
   1  cancelled, or closed with unresolved conflicts or unsaved changes
   2  usage or I/O error
 `
@@ -200,7 +201,7 @@ func parseArgs(args []string) (options, error) {
 		}
 		o.cmd = cmdScratch
 	default:
-		return o, usagef("expected 2 files (diff) or 3 files and -o (merge), got %d", len(paths))
+		return o, usagef("expected 2 files or directories (diff) or 3 files and -o (merge), got %d", len(paths))
 	}
 	return o, nil
 }

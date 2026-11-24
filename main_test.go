@@ -319,3 +319,45 @@ func TestAppCompare(t *testing.T) {
 		t.Errorf("scratch default exit code %d, want 0", c)
 	}
 }
+
+func TestRunDirectories(t *testing.T) {
+	dir := t.TempDir()
+	left, right := filepath.Join(dir, "left"), filepath.Join(dir, "right")
+	os.Mkdir(left, 0o755)
+	os.Mkdir(right, 0o755)
+	writeFile(t, left, "a.txt", "1\n")
+	writeFile(t, right, "a.txt", "2\n")
+	file := writeFile(t, dir, "f.txt", "x\n")
+	opened := stubGUI(t, exitOK)
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{left, right}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("two directories: exit %d, stderr %q", code, stderr.String())
+	}
+	s := *opened
+	if s == nil || s.Mode != session.DirDiff || len(s.Entries) != 1 || s.Entries[0].Path != "a.txt" {
+		t.Fatalf("two directories opened %+v, want a dirdiff session listing a.txt", s)
+	}
+
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{left, file}, "LEFT " + left + " is a directory but RIGHT " + file + " is a file"},
+		{[]string{file, right}, "LEFT " + file + " is a file but RIGHT " + right + " is a directory"},
+	} {
+		*opened = nil
+		stderr.Reset()
+		code := run(tc.args, &stdout, &stderr)
+		if code != exitError || *opened != nil || !strings.Contains(stderr.String(), tc.want) || !strings.Contains(stderr.String(), "Usage:") {
+			t.Errorf("run(%q): exit %d, opened %v, stderr %q; want exit 2, usage and %q", tc.args, code, *opened != nil, stderr.String(), tc.want)
+		}
+	}
+
+	// A missing path is a file that cannot be read: an I/O error, not a usage error.
+	*opened = nil
+	stderr.Reset()
+	if code := run([]string{filepath.Join(dir, "missing"), file}, &stdout, &stderr); code != exitError || strings.Contains(stderr.String(), "Usage:") {
+		t.Errorf("missing LEFT: exit %d, stderr %q; want exit 2 without usage", code, stderr.String())
+	}
+}
