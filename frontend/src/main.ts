@@ -1,4 +1,4 @@
-import { Events } from "@wailsio/runtime";
+import { Events, Window } from "@wailsio/runtime";
 import * as Backend from "../bindings/github.com/hadi-susanto/mergediff/windows";
 import { Mode, type Session } from "../bindings/github.com/hadi-susanto/mergediff/internal/session/models";
 import { showError } from "./dialogs.ts";
@@ -9,8 +9,11 @@ import { setLanguage } from "./panes.ts";
 import { installTheme, themeFromURL } from "./theme.ts";
 import "./styles.css";
 
-/** Event the backend emits when the window's close button is used (main.go). */
-const CLOSE_REQUESTED = "mergediff:close-requested";
+/**
+ * Prefix of the event the backend emits when a window's close button is
+ * used; the window's name follows (closeRequestedEvent in main.go).
+ */
+const CLOSE_REQUESTED = "mergediff:close-requested:";
 
 /** Process exit codes, mirroring cli.go. */
 const EXIT_OK = 0;
@@ -95,11 +98,15 @@ async function main(): Promise<void> {
         quit,
         charDiff,
         guardClose(handler) {
-          Events.On(CLOSE_REQUESTED, () => {
-            Backend.CloseRequestSeen().catch((err) => console.error("acknowledging close failed", err));
-            handler();
-          });
-          Backend.GuardClose(true).catch((err) => console.error("guarding close failed", err));
+          Window.Name()
+            .then((name) => {
+              Events.On(CLOSE_REQUESTED + name, () => {
+                Backend.CloseRequestSeen().catch((err) => console.error("acknowledging close failed", err));
+                handler();
+              });
+              return Backend.GuardClose(true);
+            })
+            .catch((err) => console.error("guarding close failed", err));
         },
       },
     );

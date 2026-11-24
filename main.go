@@ -98,8 +98,12 @@ func loadSettings(flags []setting) (config.Config, error) {
 	return cfg, nil
 }
 
-// closeRequestedEvent tells the frontend the window's close button was used.
-const closeRequestedEvent = "mergediff:close-requested"
+// closeRequestedEvent names the event that tells a window's frontend its
+// close button was used. Events reach every window, so the name carries
+// the window's name and each window listens only for its own.
+func closeRequestedEvent(window string) string {
+	return "mergediff:close-requested:" + window
+}
 
 // mainWindowName names the window opened from the command line.
 const mainWindowName = "main"
@@ -146,7 +150,7 @@ func runGUI(sess *session.Session, cfg config.Config) int {
 	window.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		if app.interceptClose(time.Now()) {
 			e.Cancel()
-			wails.Event.Emit(closeRequestedEvent)
+			wails.Event.Emit(closeRequestedEvent(window.Name()))
 		}
 	})
 
