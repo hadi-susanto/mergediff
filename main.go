@@ -101,13 +101,17 @@ func loadSettings(flags []setting) (config.Config, error) {
 // closeRequestedEvent tells the frontend the window's close button was used.
 const closeRequestedEvent = "mergediff:close-requested"
 
+// mainWindowName names the window opened from the command line.
+const mainWindowName = "main"
+
 func runGUI(sess *session.Session, cfg config.Config) int {
 	app := newApp(sess)
 	app.settings = cfg.Values()
+	wins := newWindows()
 	wails := application.New(application.Options{
 		Name:        "mergediff",
 		Description: "3-way merge and 2-way diff tool",
-		Services:    []application.Service{application.NewService(app)},
+		Services:    []application.Service{application.NewService(wins)},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
@@ -133,7 +137,10 @@ func runGUI(sess *session.Session, cfg config.Config) int {
 	})
 	app.quit = wails.Quit
 
-	window := wails.Window.NewWithOptions(windowOptions(sess, cfg))
+	opts := windowOptions(sess, cfg)
+	opts.Name = mainWindowName
+	window := wails.Window.NewWithOptions(opts)
+	wins.registerMain(window, app)
 	// In merge mode the frontend guards the close button, so unsaved edits
 	// are confirmed the same way as Cancel (see App.GuardClose).
 	window.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {

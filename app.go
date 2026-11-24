@@ -10,8 +10,10 @@ import (
 	"github.com/hadi-susanto/mergediff/internal/session"
 )
 
-// App is the Wails service bound to the frontend. Its exported methods are
-// thin adapters over the internal packages.
+// App is the state of one window: its session, exit code and close guard.
+// Its exported methods are thin adapters over the internal packages; the
+// frontend reaches them through the bound Windows service (windows.go),
+// which forwards each call to the calling window's App.
 type App struct {
 	sess     *session.Session
 	settings map[string]string // effective settings, keyed by config key

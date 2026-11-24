@@ -1,9 +1,16 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+
+	"github.com/hadi-susanto/mergediff/internal/diff"
+	"github.com/hadi-susanto/mergediff/internal/merge"
+	"github.com/hadi-susanto/mergediff/internal/session"
 )
 
 // windowHandle is the part of a Wails window the registry uses. Tests fake it.
@@ -115,4 +122,97 @@ func (w *Windows) remove(id uint) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	delete(w.wins, id)
+}
+
+// errNoWindow is returned for a bound call that did not come from a window.
+var errNoWindow = errors.New("call did not come from a window")
+
+// caller returns the App of the window that made the bound call. Wails
+// puts the calling window in the context of every call from a webview.
+func (w *Windows) caller(ctx context.Context) (*App, error) {
+	win, ok := ctx.Value(application.WindowKey).(application.Window)
+	if !ok {
+		return nil, errNoWindow
+	}
+	return w.byID(win.ID())
+}
+
+// stateless serves the bound methods that use no session.
+var stateless App
+
+// The exported methods below are bound to the frontend. Each one forwards
+// to the App of the calling window; the leading context is supplied by
+// Wails and does not appear in the generated bindings.
+
+// LoadSession returns the calling window's session.
+func (w *Windows) LoadSession(ctx context.Context) (session.Session, error) {
+	app, err := w.caller(ctx)
+	if err != nil {
+		return session.Session{}, err
+	}
+	return app.LoadSession()
+}
+
+// Save writes the calling window's merge result.
+func (w *Windows) Save(ctx context.Context, result string) error {
+	app, err := w.caller(ctx)
+	if err != nil {
+		return err
+	}
+	return app.Save(result)
+}
+
+// Quit closes the calling window. For the main window the process then
+// exits with code; a child window just closes.
+func (w *Windows) Quit(ctx context.Context, code int) error {
+	app, err := w.caller(ctx)
+	if err != nil {
+		return err
+	}
+	app.Quit(code)
+	return nil
+}
+
+// GuardClose turns the calling window's close guard on or off.
+func (w *Windows) GuardClose(ctx context.Context, on bool) error {
+	app, err := w.caller(ctx)
+	if err != nil {
+		return err
+	}
+	app.GuardClose(on)
+	return nil
+}
+
+// CloseRequestSeen acknowledges the calling window's close request.
+func (w *Windows) CloseRequestSeen(ctx context.Context) error {
+	app, err := w.caller(ctx)
+	if err != nil {
+		return err
+	}
+	app.CloseRequestSeen()
+	return nil
+}
+
+// Settings returns the effective settings of the calling window.
+func (w *Windows) Settings(ctx context.Context) (map[string]string, error) {
+	app, err := w.caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return app.Settings(), nil
+}
+
+// CharDiff returns character-level differences between two texts.
+func (w *Windows) CharDiff(left, right string) []diff.Span {
+	return stateless.CharDiff(left, right)
+}
+
+// Compare diffs two texts for the scratch view.
+func (w *Windows) Compare(left, right string) ([]merge.Chunk, error) {
+	return stateless.Compare(left, right)
+}
+
+// Version returns the build version for the status bar.
+func (w *Windows) Version() string {
+	return stateless.Version()
 }
