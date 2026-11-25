@@ -6,12 +6,15 @@ import (
 
 	"github.com/hadi-susanto/mergediff/internal/config"
 	"github.com/hadi-susanto/mergediff/internal/diff"
+	"github.com/hadi-susanto/mergediff/internal/dirdiff"
 	"github.com/hadi-susanto/mergediff/internal/merge"
 	"github.com/hadi-susanto/mergediff/internal/session"
 )
 
-// App is the Wails service bound to the frontend. Its exported methods are
-// thin adapters over the internal packages.
+// App is the state of one window: its session, exit code and close guard.
+// Its exported methods are thin adapters over the internal packages; the
+// frontend reaches them through the bound Windows service (windows.go),
+// which forwards each call to the calling window's App.
 type App struct {
 	sess     *session.Session
 	settings map[string]string // effective settings, keyed by config key
@@ -69,6 +72,25 @@ func (a *App) CharDiff(left, right string) []diff.Span {
 		return []diff.Span{}
 	}
 	return spans
+}
+
+// DirEntries waits for the directory comparison and returns its entries.
+func (a *App) DirEntries() ([]dirdiff.Entry, error) {
+	entries, err := a.sess.DirEntries()
+	if err == nil && entries == nil {
+		entries = []dirdiff.Entry{}
+	}
+	return entries, err
+}
+
+// DirStats returns the line counts computed since the previous call.
+func (a *App) DirStats() (dirdiff.StatsBatch, error) {
+	return a.sess.DirStats()
+}
+
+// DirProgress reports how far the directory comparison got.
+func (a *App) DirProgress() dirdiff.Snapshot {
+	return a.sess.DirProgress()
 }
 
 // Save writes the merge result to MERGED with the original line endings.

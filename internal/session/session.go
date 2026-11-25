@@ -7,8 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 
+	"github.com/hadi-susanto/mergediff/internal/dirdiff"
 	"github.com/hadi-susanto/mergediff/internal/merge"
 	"github.com/hadi-susanto/mergediff/internal/textio"
 )
@@ -22,6 +25,8 @@ const (
 	// Scratch is an editable two-way diff without files: the user pastes
 	// text into both panes and compares it with Compare.
 	Scratch Mode = "scratch"
+	// DirDiff lists the files that differ between two directories.
+	DirDiff Mode = "dirdiff"
 )
 
 // ErrNotMerge is returned by Save in diff mode.
@@ -34,7 +39,7 @@ var ErrNotMerge = errors.New("not a merge session")
 // Base ranges equal their Local ranges.
 type Session struct {
 	Mode  Mode     `json:"mode"`
-	Paths []string `json:"paths"` // merge: BASE, LOCAL, REMOTE, MERGED; diff: LEFT, RIGHT
+	Paths []string `json:"paths"` // merge: BASE, LOCAL, REMOTE, MERGED; diff, dirdiff: LEFT, RIGHT
 	// Title names the file being merged or compared, for the window title.
 	Title         string        `json:"title"`
 	Base          string        `json:"base"`
@@ -50,6 +55,7 @@ type Session struct {
 
 	eol    textio.EOL
 	output string
+	dir    *dirCompare // dirdiff only
 }
 
 // LoadDiff loads LEFT and RIGHT for a read-only two-way diff.
@@ -71,6 +77,32 @@ func LoadDiff(left, right string) (*Session, error) {
 		Remote:   r.Text,
 		Chunks:   diffChunks(l.Text, r.Text),
 		Language: Language(right),
+		EOL:      eol.Name(),
+		eol:      eol,
+	}, nil
+}
+
+// LoadPair loads two files for a read-only diff opened from a directory
+// comparison. An empty path is a file missing on that side: it shows as
+// empty text. title names the window, e.g. the file's relative path.
+func LoadPair(left, right, title string) (*Session, error) {
+	l, err := textio.ReadOptional(left)
+	if err != nil {
+		return nil, fmt.Errorf("read LEFT: %w", err)
+	}
+	r, err := textio.ReadOptional(right)
+	if err != nil {
+		return nil, fmt.Errorf("read RIGHT: %w", err)
+	}
+	eol := textio.DetectEOL(r, l)
+	return &Session{
+		Mode:     Diff,
+		Paths:    []string{left, right},
+		Title:    title,
+		Local:    l.Text,
+		Remote:   r.Text,
+		Chunks:   diffChunks(l.Text, r.Text),
+		Language: Language(title),
 		EOL:      eol.Name(),
 		eol:      eol,
 	}, nil
@@ -127,6 +159,129 @@ func (s *Session) Save(result string) error {
 		return fmt.Errorf("write MERGED: %w", err)
 	}
 	return nil
+}
+
+// ErrNotDirDiff is returned by DirEntries outside dirdiff mode.
+var ErrNotDirDiff = errors.New("not a directory comparison")
+
+// dirCompare is a directory comparison running in the background: first
+// the entries, then the line counts of the changed files.
+type dirCompare struct {
+	progress dirdiff.Progress
+	done     chan struct{} // closed when entries and err are set
+	entries  []dirdiff.Entry
+	err      error
+
+	mu        sync.Mutex
+	stats     []dirdiff.PathStat // computed, not yet taken by DirStats
+	statsDone bool
+}
+
+// StartDirDiff checks that LEFT and RIGHT are directories and starts
+// comparing them in the background, so the window can open at once.
+// DirEntries waits for the result; DirProgress reports how far it got.
+func StartDirDiff(left, right string) (*Session, error) {
+	// Absolute roots, so the window shows full paths and the entries'
+	// paths do not depend on the working directory.
+	var err error
+	if left, err = filepath.Abs(left); err != nil {
+		return nil, fmt.Errorf("read LEFT: %w", err)
+	}
+	if right, err = filepath.Abs(right); err != nil {
+		return nil, fmt.Errorf("read RIGHT: %w", err)
+	}
+	if err := dirdiff.CheckRoot(left); err != nil {
+		return nil, fmt.Errorf("read LEFT: %w", err)
+	}
+	if err := dirdiff.CheckRoot(right); err != nil {
+		return nil, fmt.Errorf("read RIGHT: %w", err)
+	}
+	c := &dirCompare{done: make(chan struct{})}
+	go func() {
+		c.entries, c.err = dirdiff.Compare(left, right, &c.progress)
+		close(c.done)
+		if c.err == nil {
+			dirdiff.StatsAll(c.entries, func(i int, st dirdiff.Stat) {
+				c.mu.Lock()
+				defer c.mu.Unlock()
+				c.stats = append(c.stats, dirdiff.PathStat{Path: c.entries[i].Path, Stat: st})
+			})
+		}
+		c.mu.Lock()
+		c.statsDone = true
+		c.mu.Unlock()
+	}()
+	return &Session{
+		Mode:   DirDiff,
+		Paths:  []string{left, right},
+		Title:  "Compare directories",
+		Chunks: []merge.Chunk{},
+		EOL:    textio.LF.Name(),
+		eol:    textio.LF,
+		dir:    c,
+	}, nil
+}
+
+// DirEntries waits for the directory comparison and returns the files of
+// both trees, sorted by path, unchanged files included.
+func (s *Session) DirEntries() ([]dirdiff.Entry, error) {
+	if s.dir == nil {
+		return nil, ErrNotDirDiff
+	}
+	<-s.dir.done
+	return s.dir.entries, s.dir.err
+}
+
+// ErrCannotOpen is returned by EntrySession for an entry that cannot be
+// shown as a text diff (an error, a symlink to a directory, a large file).
+var ErrCannotOpen = errors.New("cannot be opened")
+
+// EntrySession loads the two sides of the directory comparison's entry at
+// path (relative, "/" separators) as a read-only diff. Binary and invalid
+// UTF-8 files fail with textio's errors.
+func (s *Session) EntrySession(path string) (*Session, error) {
+	entries, err := s.DirEntries()
+	if err != nil {
+		return nil, err
+	}
+	i := sort.Search(len(entries), func(i int) bool { return entries[i].Path >= path })
+	if i == len(entries) || entries[i].Path != path {
+		return nil, fmt.Errorf("%s: not in the comparison", path)
+	}
+	e := entries[i]
+	switch {
+	case e.Note != "":
+		return nil, fmt.Errorf("%s %w: %s", path, ErrCannotOpen, e.Note)
+	case e.LeftSize > dirdiff.MaxOpenSize || e.RightSize > dirdiff.MaxOpenSize:
+		return nil, fmt.Errorf("%s %w: %s", path, ErrCannotOpen, dirdiff.ReasonTooLarge)
+	}
+	return LoadPair(e.Left, e.Right, path)
+}
+
+// DirStats returns the line counts computed since the previous call, and
+// whether all have now been delivered. They start once the entries are
+// ready; files that are not dirdiff.Counted get none.
+func (s *Session) DirStats() (dirdiff.StatsBatch, error) {
+	if s.dir == nil {
+		return dirdiff.StatsBatch{}, ErrNotDirDiff
+	}
+	c := s.dir
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	b := dirdiff.StatsBatch{Stats: c.stats, Done: c.statsDone}
+	if b.Stats == nil {
+		b.Stats = []dirdiff.PathStat{}
+	}
+	c.stats = nil
+	return b, nil
+}
+
+// DirProgress reports how far the directory comparison got.
+func (s *Session) DirProgress() dirdiff.Snapshot {
+	if s.dir == nil {
+		return dirdiff.Snapshot{Done: true}
+	}
+	return s.dir.progress.Snapshot()
 }
 
 // NewScratch returns an empty scratch session (mergediff without arguments).

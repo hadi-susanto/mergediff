@@ -22,6 +22,11 @@ export enum Mode {
      * text into both panes and compares it with Compare.
      */
     Scratch = "scratch",
+
+    /**
+     * DirDiff lists the files that differ between two directories.
+     */
+    DirDiff = "dirdiff",
 };
 
 /**
@@ -35,7 +40,7 @@ export interface Session {
     "mode": Mode;
 
     /**
-     * merge: BASE, LOCAL, REMOTE, MERGED; diff: LEFT, RIGHT
+     * merge: BASE, LOCAL, REMOTE, MERGED; diff, dirdiff: LEFT, RIGHT
      */
     "paths": string[] | null;
 

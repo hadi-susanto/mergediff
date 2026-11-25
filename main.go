@@ -61,7 +61,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case cmdMerge:
 		sess, err = session.LoadMerge(opts.base, opts.local, opts.remote, opts.output, opts.autoApply)
 	case cmdDiff:
-		sess, err = session.LoadDiff(opts.left, opts.right)
+		var dirs bool
+		if dirs, err = bothDirs(opts.left, opts.right); err != nil {
+			printUsageError(stderr, err)
+			return exitError
+		}
+		if dirs {
+			sess, err = session.StartDirDiff(opts.left, opts.right)
+		} else {
+			sess, err = session.LoadDiff(opts.left, opts.right)
+		}
 	case cmdScratch:
 		sess = session.NewScratch()
 	}
@@ -75,6 +84,25 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 	return startGUI(sess, cfg)
+}
+
+// bothDirs reports whether LEFT and RIGHT are both directories (a
+// directory diff). One directory and one file is a usage error. A path
+// that cannot be read counts as a file, so loading it reports the error.
+func bothDirs(left, right string) (bool, error) {
+	l, r := isDir(left), isDir(right)
+	switch {
+	case l && !r:
+		return false, usagef("LEFT %s is a directory but RIGHT %s is a file; compare two files or two directories", left, right)
+	case r && !l:
+		return false, usagef("LEFT %s is a file but RIGHT %s is a directory; compare two files or two directories", left, right)
+	}
+	return l && r, nil
+}
+
+func isDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 // configPath locates the config file; a variable so tests can redirect it.
@@ -98,16 +126,24 @@ func loadSettings(flags []setting) (config.Config, error) {
 	return cfg, nil
 }
 
-// closeRequestedEvent tells the frontend the window's close button was used.
-const closeRequestedEvent = "mergediff:close-requested"
+// closeRequestedEvent names the event that tells a window's frontend its
+// close button was used. Events reach every window, so the name carries
+// the window's name and each window listens only for its own.
+func closeRequestedEvent(window string) string {
+	return "mergediff:close-requested:" + window
+}
+
+// mainWindowName names the window opened from the command line.
+const mainWindowName = "main"
 
 func runGUI(sess *session.Session, cfg config.Config) int {
 	app := newApp(sess)
 	app.settings = cfg.Values()
+	wins := newWindows()
 	wails := application.New(application.Options{
 		Name:        "mergediff",
 		Description: "3-way merge and 2-way diff tool",
-		Services:    []application.Service{application.NewService(app)},
+		Services:    []application.Service{application.NewService(wins)},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
@@ -132,16 +168,27 @@ func runGUI(sess *session.Session, cfg config.Config) int {
 		},
 	})
 	app.quit = wails.Quit
-
-	window := wails.Window.NewWithOptions(windowOptions(sess, cfg))
-	// In merge mode the frontend guards the close button, so unsaved edits
-	// are confirmed the same way as Cancel (see App.GuardClose).
-	window.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
-		if app.interceptClose(time.Now()) {
-			e.Cancel()
-			wails.Event.Emit(closeRequestedEvent)
-		}
-	})
+	wins.quitApp = wails.Quit
+	wins.settings = app.settings
+	wins.newWindow = func(name string, sess *session.Session, app *App) windowHandle {
+		opts := windowOptions(sess, cfg)
+		opts.Name = name
+		window := wails.Window.NewWithOptions(opts)
+		// In merge mode the frontend guards the close button, so unsaved
+		// edits are confirmed the same way as Cancel (see App.GuardClose).
+		window.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+			if app.interceptClose(time.Now()) {
+				e.Cancel()
+				wails.Event.Emit(closeRequestedEvent(name))
+			}
+		})
+		// Runs only when no hook cancelled the close.
+		window.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+			wins.closed(name)
+		})
+		return window
+	}
+	wins.openMain(app)
 
 	if err := wails.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "mergediff: %v\n", err)
@@ -150,7 +197,7 @@ func runGUI(sess *session.Session, cfg config.Config) int {
 	return app.code()
 }
 
-// windowOptions configures the main window from the session and settings.
+// windowOptions configures a window from its session and the settings.
 func windowOptions(sess *session.Session, cfg config.Config) application.WebviewWindowOptions {
 	opts := application.WebviewWindowOptions{
 		Title:  "mergediff — " + sess.Title,

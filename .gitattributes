@@ -5,3 +5,6 @@
 internal/merge/testdata/** -text
 
 *.png binary
+
+# Directory diff samples must keep their exact bytes (CRLF, binary, Latin-1).
+testdata/dev/dirdiff/** -text

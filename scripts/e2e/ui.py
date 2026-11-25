@@ -3,12 +3,13 @@
 
 Usage: ui.py STEP [STEP ...]
   wait                 wait until the mergediff window's buttons are accessible
-  dump                 print buttons
-  click NAME[#N]       click the N-th (0-based) button named NAME
+  dump                 print buttons, chips and checkboxes
+  click NAME[#N]       click the N-th (0-based) button, chip or checkbox named NAME
   key COMBO            e.g. ctrl+z, ctrl+s, shift+F7, Escape (XTest)
   type TEXT            type TEXT into the focused widget
   scroll X Y N         move the pointer to screen X,Y and wheel N notches (N<0 = up)
   clickat X Y          left-click at screen X,Y (XTest), e.g. to focus a pane
+  dblclickin TITLE X Y double-click at X,Y inside the window titled TITLE...
   pixel X Y            print the colour at screen X,Y as #rrggbb
   find TEXT            wait until some element's text contains TEXT (exit 1 if not)
   samples TITLE SECS   wait for a window titled TITLE, then print the brightness
@@ -42,8 +43,13 @@ def find_app():
     return None
 
 
+# Clickable controls: buttons, and the directory view's filter chips (radio
+# buttons) and checkboxes.
+CONTROL_ROLES = ("push button", "button", "radio button", "toggle button", "check box")
+
+
 def buttons(app):
-    return pyatspi.findAllDescendants(app, lambda n: n.getRoleName() in ("push button", "button"))
+    return pyatspi.findAllDescendants(app, lambda n: n.getRoleName() in CONTROL_ROLES)
 
 
 def wait(timeout=30):
@@ -134,7 +140,7 @@ def scroll(x, y, n):
     time.sleep(0.5)
 
 
-def clickat(x, y):
+def clickat(x, y, clicks=1):
     from Xlib import X
     from Xlib.ext import xtest
 
@@ -143,10 +149,27 @@ def clickat(x, y):
     xtest.fake_input(d, X.MotionNotify, x=x, y=y)
     d.sync()
     time.sleep(0.1)
-    xtest.fake_input(d, X.ButtonPress, 1)
-    xtest.fake_input(d, X.ButtonRelease, 1)
-    d.sync()
+    for _ in range(clicks):
+        xtest.fake_input(d, X.ButtonPress, 1)
+        d.sync()
+        time.sleep(0.03)
+        xtest.fake_input(d, X.ButtonRelease, 1)
+        d.sync()
+        time.sleep(0.06)
     time.sleep(0.4)
+
+
+def window_origin(title):
+    """Screen position of the client area of the window whose title starts with title."""
+    import subprocess
+
+    d = xdisplay()
+    for line in subprocess.check_output(["wmctrl", "-l"], text=True).splitlines():
+        if line.split(None, 3)[3].startswith(title):
+            w = d.create_resource_object("window", int(line.split()[0], 16))
+            pos = w.translate_coords(d.screen().root, 0, 0)
+            return -pos.x, -pos.y
+    sys.exit(f"window {title!r} not found")
 
 
 def pixel(x, y):
@@ -257,6 +280,10 @@ def main(argv):
         elif step == "clickat":
             clickat(int(argv[i + 1]), int(argv[i + 2]))
             i += 2
+        elif step == "dblclickin":
+            ox, oy = window_origin(argv[i + 1])
+            clickat(ox + int(argv[i + 2]), oy + int(argv[i + 3]), clicks=2)
+            i += 3
         elif step == "pixel":
             pixel(int(argv[i + 1]), int(argv[i + 2]))
             i += 2

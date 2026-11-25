@@ -9,7 +9,9 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/hadi-susanto/mergediff/internal/dirdiff"
 	"github.com/hadi-susanto/mergediff/internal/merge"
 	"github.com/hadi-susanto/mergediff/internal/textio"
 )
@@ -241,5 +243,204 @@ func TestScratchAndCompare(t *testing.T) {
 
 	if _, err := Compare("a\x00b", "x"); !errors.Is(err, textio.ErrBinary) {
 		t.Fatalf("NUL text: err = %v", err)
+	}
+}
+
+func TestStartDirDiff(t *testing.T) {
+	dir := t.TempDir()
+	left, right := filepath.Join(dir, "l"), filepath.Join(dir, "r")
+	for _, d := range []string{left, right} {
+		if err := os.Mkdir(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(t, left, "same.txt", "x\n")
+	write(t, right, "same.txt", "x\n")
+	write(t, right, "new.txt", "y\n")
+
+	s, err := StartDirDiff(left, right)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Mode != DirDiff || s.Title != "Compare directories" || !reflect.DeepEqual(s.Paths, []string{left, right}) {
+		t.Errorf("session = %+v", s)
+	}
+	entries, err := s.DirEntries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, e := range entries {
+		got = append(got, e.Path+" "+string(e.Status))
+	}
+	if want := []string{"new.txt added", "same.txt unchanged"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("entries = %q, want %q", got, want)
+	}
+	if p := s.DirProgress(); !p.Done || p.Found != 3 || p.Compared != 2 {
+		t.Errorf("progress after the comparison = %+v, want done, 3 found, 2 compared", p)
+	}
+	// A copy (as LoadSession returns) shares the comparison.
+	c := *s
+	if again, err := c.DirEntries(); err != nil || len(again) != 2 {
+		t.Errorf("copy: %d entries, %v", len(again), err)
+	}
+	if err := s.Save("x"); !errors.Is(err, ErrNotMerge) {
+		t.Errorf("Save in dirdiff mode: %v, want ErrNotMerge", err)
+	}
+	data, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"mode":"dirdiff"`) {
+		t.Errorf("JSON = %s", data)
+	}
+}
+
+func TestDirStats(t *testing.T) {
+	dir := t.TempDir()
+	left, right := filepath.Join(dir, "l"), filepath.Join(dir, "r")
+	os.MkdirAll(left, 0o755)
+	os.MkdirAll(right, 0o755)
+	write(t, left, "m.txt", "a\nb\n")
+	write(t, right, "m.txt", "a\nB\nc\n")
+	write(t, right, "new.txt", "x\n")
+	write(t, left, "same.txt", "s\n")
+	write(t, right, "same.txt", "s\n")
+	s, err := StartDirDiff(left, right)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]dirdiff.Stat{}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		b, err := s.DirStats()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, ps := range b.Stats {
+			if _, dup := got[ps.Path]; dup {
+				t.Errorf("%s delivered twice", ps.Path)
+			}
+			got[ps.Path] = ps.Stat
+		}
+		if b.Done {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("stats never done")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	want := map[string]dirdiff.Stat{"m.txt": {Added: 2, Deleted: 1}, "new.txt": {Added: 1}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("stats = %+v, want %+v", got, want)
+	}
+	if b, _ := s.DirStats(); !b.Done || len(b.Stats) != 0 {
+		t.Errorf("after done: %+v, want done and empty", b)
+	}
+	if _, err := NewScratch().DirStats(); !errors.Is(err, ErrNotDirDiff) {
+		t.Errorf("DirStats in scratch mode: %v", err)
+	}
+}
+
+func TestStartDirDiffAbsolutePaths(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "l"), 0o755)
+	os.MkdirAll(filepath.Join(dir, "r"), 0o755)
+	t.Chdir(dir)
+	s, err := StartDirDiff("l", "r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{filepath.Join(dir, "l"), filepath.Join(dir, "r")}
+	if !reflect.DeepEqual(s.Paths, want) {
+		t.Errorf("Paths = %q, want %q", s.Paths, want)
+	}
+}
+
+func TestStartDirDiffErrors(t *testing.T) {
+	dir := t.TempDir()
+	file := write(t, dir, "f.txt", "x")
+	if _, err := StartDirDiff(dir, file); err == nil || !strings.Contains(err.Error(), "RIGHT") {
+		t.Errorf("RIGHT is a file: %v, want an error naming RIGHT", err)
+	}
+	if _, err := StartDirDiff(filepath.Join(dir, "missing"), dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("LEFT missing: %v, want ErrNotExist", err)
+	}
+}
+
+func TestDirEntriesOtherModes(t *testing.T) {
+	s := NewScratch()
+	if _, err := s.DirEntries(); !errors.Is(err, ErrNotDirDiff) {
+		t.Errorf("DirEntries in scratch mode: %v, want ErrNotDirDiff", err)
+	}
+	if p := s.DirProgress(); !p.Done {
+		t.Errorf("DirProgress in scratch mode = %+v, want done", p)
+	}
+}
+
+func TestLoadPairMissingSides(t *testing.T) {
+	dir := t.TempDir()
+	f := write(t, dir, "a.go", "one\r\ntwo\r\n")
+	for _, tc := range []struct{ left, right, local, remote string }{
+		{"", f, "", "one\ntwo\n"},
+		{f, "", "one\ntwo\n", ""},
+	} {
+		s, err := LoadPair(tc.left, tc.right, "pkg/a.go")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s.Mode != Diff || s.Local != tc.local || s.Remote != tc.remote || s.Title != "pkg/a.go" ||
+			s.Language != "go" || s.EOL != "CRLF" || !reflect.DeepEqual(s.Paths, []string{tc.left, tc.right}) {
+			t.Errorf("LoadPair(%q, %q) = %+v", tc.left, tc.right, s)
+		}
+		if len(s.Chunks) == 0 {
+			t.Errorf("LoadPair(%q, %q): no chunks", tc.left, tc.right)
+		}
+	}
+}
+
+func TestEntrySession(t *testing.T) {
+	dir := t.TempDir()
+	left, right := filepath.Join(dir, "l"), filepath.Join(dir, "r")
+	os.MkdirAll(filepath.Join(left, "sub"), 0o755)
+	os.MkdirAll(right, 0o755)
+	write(t, left, "sub/m.txt", "a\n")
+	write(t, right, "sub", "now a file\n") // "sub" is a file on the right
+	write(t, right, "bin", "x\x00")
+	big := strings.Repeat("x", 5*1024*1024+1)
+	write(t, right, "big.txt", big)
+	if err := os.Symlink(dir, filepath.Join(right, "loop")); err != nil {
+		t.Skipf("symlinks not available: %v", err)
+	}
+	s, err := StartDirDiff(left, right)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	child, err := s.EntrySession("sub/m.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.Mode != Diff || child.Local != "a\n" || child.Remote != "" || child.Title != "sub/m.txt" {
+		t.Errorf("deleted file: %+v", child)
+	}
+	if child, err := s.EntrySession("sub"); err != nil || child.Remote != "now a file\n" || child.Local != "" {
+		t.Errorf("added file: %+v, %v", child, err)
+	}
+	for path, want := range map[string]error{
+		"bin":     textio.ErrBinary,
+		"big.txt": ErrCannotOpen,
+		"loop":    ErrCannotOpen,
+	} {
+		if _, err := s.EntrySession(path); !errors.Is(err, want) {
+			t.Errorf("EntrySession(%s) = %v, want %v", path, err, want)
+		}
+	}
+	if _, err := s.EntrySession("nope"); err == nil {
+		t.Error("EntrySession(unknown path) succeeded")
+	}
+	if _, err := NewScratch().EntrySession("x"); !errors.Is(err, ErrNotDirDiff) {
+		t.Errorf("EntrySession in scratch mode: %v, want ErrNotDirDiff", err)
 	}
 }

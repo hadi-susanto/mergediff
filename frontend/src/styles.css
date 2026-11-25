@@ -20,6 +20,8 @@
   --conflict-strong: #f0a9a9;
   --conflict-fg: #b42318;
   --added-fg: #2b6a32;
+  --deleted-fg: #6b6a64;
+  --modified-fg: #1f5fa8;
 
   --btn-bg: #ffffff;
   --btn-border: #cfcdc6;
@@ -61,6 +63,8 @@
   --conflict-strong: #8c3235;
   --conflict-fg: #f4b4b0;
   --added-fg: #a9dca3;
+  --deleted-fg: #a3a29c;
+  --modified-fg: #a8c8ec;
 
   --btn-bg: #2b2b29;
   --btn-border: #45443f;
@@ -517,4 +521,304 @@ body {
 
 .md-conn.md-resolved {
   opacity: 0.35;
+}
+
+/* Directory view (dirview.ts) */
+.panes-dir {
+  display: flex;
+  flex-direction: column;
+  background: var(--editor-bg);
+}
+
+.mono {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+}
+
+.toolbar-paths .toolbar-left {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.path-bar {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.path-bar-label {
+  color: var(--chrome-muted);
+}
+
+.path-bar-path {
+  flex: 0 0 auto; /* dirview.ts shortens the text itself, in the middle */
+  color: var(--chrome-fg);
+}
+
+.path-bar-arrow {
+  color: var(--chrome-muted);
+}
+
+/* File list (filelist.ts) */
+.fl {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  outline: none;
+}
+
+.fl-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.fl-row {
+  display: grid;
+  grid-template-columns: var(--fl-columns);
+  align-items: center;
+  min-height: 32px;
+  border-bottom: 1px solid var(--chrome-border);
+  cursor: default;
+  user-select: none;
+}
+
+/* Virtual scrolling: the canvas is as tall as all rows; only the rows in
+   view exist, each placed at index × 32px (ROW_HEIGHT in filelist.ts). */
+.fl-canvas {
+  position: relative;
+}
+
+.fl-body .fl-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  min-height: 0;
+}
+
+/* Directory header rows (Group by directory) */
+.fl-group {
+  background: var(--chrome-bg);
+}
+
+.fl-group-cell {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fl-group-chevron {
+  width: 12px;
+  color: var(--chrome-muted);
+}
+
+.fl-group-icon {
+  color: var(--chrome-muted);
+}
+
+.fl-group-label {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  color: var(--editor-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.fl-group .tag {
+  flex: 0 0 auto;
+  font-size: 11px;
+}
+
+.fl-in-group .fl-col-file {
+  padding-left: 36px;
+}
+
+.fl-header {
+  min-height: 34px;
+  background: var(--chrome-bg);
+  color: var(--chrome-muted);
+}
+
+.fl-subtitle {
+  font-size: 11px;
+}
+
+.fl-cell {
+  padding: 4px 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fl-row.fl-selected {
+  background: var(--modified-bg);
+}
+
+.fl:focus .fl-row.fl-selected {
+  box-shadow: inset 2px 0 0 var(--modified-strong);
+}
+
+.fl-message {
+  padding: 24px 16px;
+  color: var(--chrome-muted);
+  text-align: center;
+}
+
+/* Path cell: the directory part shrinks first (trailing "…"); the file
+   name only when it alone is wider than the column. */
+.fl-path {
+  display: flex;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+}
+
+.fl-dir {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--chrome-muted);
+}
+
+.fl-name {
+  flex: 0 0 auto;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  color: var(--editor-fg);
+}
+
+/* Status badge (M / A / D / !) and status tag */
+.badge {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 4px;
+}
+
+.st-modified {
+  background: var(--modified-bg);
+  color: var(--modified-fg);
+}
+
+.st-added {
+  background: var(--added-bg);
+  color: var(--added-fg);
+}
+
+.st-deleted {
+  background: var(--deleted-bg);
+  color: var(--deleted-fg);
+}
+
+.st-error {
+  background: var(--conflict-bg);
+  color: var(--conflict-fg);
+}
+
+.st-unchanged {
+  color: var(--chrome-muted);
+}
+
+/* Lines column */
+.lines-added {
+  color: var(--added-fg);
+}
+
+.lines-deleted {
+  color: var(--deleted-fg);
+}
+
+.lines-added + .lines-deleted {
+  margin-left: 8px;
+}
+
+.lines-label {
+  color: var(--chrome-muted);
+}
+
+.fl-row.fl-blocked .fl-name {
+  font-weight: 500;
+}
+
+
+/* Filter bar (directory view) */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--editor-bg);
+  border-bottom: 1px solid var(--chrome-border);
+  flex-wrap: wrap;
+}
+
+.filter-input {
+  font: inherit;
+  width: 280px;
+  max-width: 100%;
+  padding: 5px 10px;
+  border: 1px solid var(--btn-border);
+  border-radius: 6px;
+  background: var(--editor-bg);
+  color: var(--editor-fg);
+}
+
+.filter-input:focus {
+  outline: 2px solid var(--modified-strong);
+  outline-offset: -1px;
+}
+
+.chips {
+  display: flex;
+  gap: 6px;
+}
+
+.chip {
+  font: inherit;
+  padding: 4px 12px;
+  border: 1px solid var(--btn-border);
+  border-radius: 999px;
+  background: var(--btn-bg);
+  color: var(--chrome-fg);
+  cursor: pointer;
+}
+
+.chip-active {
+  background: var(--btn-primary-bg);
+  border-color: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
+}
+
+.filter-spacer {
+  flex: 1;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--chrome-fg);
+  white-space: nowrap;
+}
+
+.check[hidden] {
+  display: none;
 }

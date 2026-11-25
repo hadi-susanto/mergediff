@@ -6,6 +6,7 @@ export interface Shortcuts {
   applyAll?(): void; // Ctrl/Cmd+Shift+A
   cancel?(): void; // Esc
   refresh?(): void; // F5, Ctrl/Cmd+Enter
+  find?(): void; // Ctrl/Cmd+F
 }
 
 /**
@@ -23,6 +24,7 @@ export function installShortcuts(s: Shortcuts): void {
       let action: (() => void) | undefined;
       if (mod && !e.shiftKey && !e.altKey && key === "s") action = s.save;
       else if (mod && e.shiftKey && !e.altKey && key === "a") action = s.applyAll;
+      else if (mod && !e.shiftKey && !e.altKey && key === "f") action = s.find;
       else if (!mod && !e.altKey && key === "F7") action = e.shiftKey ? s.prev : s.next;
       else if (!mod && !e.shiftKey && !e.altKey && key === "Escape") action = s.cancel;
       else if (!e.shiftKey && !e.altKey && ((!mod && key === "F5") || (mod && key === "Enter"))) action = s.refresh;

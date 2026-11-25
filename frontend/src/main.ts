@@ -1,16 +1,20 @@
-import { Events } from "@wailsio/runtime";
-import * as App from "../bindings/github.com/hadi-susanto/mergediff/app";
+import { Events, Window } from "@wailsio/runtime";
+import * as Backend from "../bindings/github.com/hadi-susanto/mergediff/windows";
 import { Mode, type Session } from "../bindings/github.com/hadi-susanto/mergediff/internal/session/models";
 import { showError } from "./dialogs.ts";
-import { renderDiffView } from "./diffview.ts";
+import { renderDiffView, type DiffPaneSpec } from "./diffview.ts";
+import { renderDirView } from "./dirview.ts";
 import { renderMerge, type Rendered } from "./merge.ts";
 import type { CharSpan, MergeChunk } from "./model.ts";
 import { setLanguage } from "./panes.ts";
 import { installTheme, themeFromURL } from "./theme.ts";
 import "./styles.css";
 
-/** Event the backend emits when the window's close button is used (main.go). */
-const CLOSE_REQUESTED = "mergediff:close-requested";
+/**
+ * Prefix of the event the backend emits when a window's close button is
+ * used; the window's name follows (closeRequestedEvent in main.go).
+ */
+const CLOSE_REQUESTED = "mergediff:close-requested:";
 
 /** Process exit codes, mirroring cli.go. */
 const EXIT_OK = 0;
@@ -27,8 +31,16 @@ function baseName(path: string): string {
   return path.split(/[\\/]/).pop() || path;
 }
 
+/**
+ * A diff pane for a file. An empty path is a file missing on that side
+ * (opened from a directory comparison): empty text titled "(missing)".
+ */
+function paneSpec(path: string, text: string): DiffPaneSpec {
+  return path ? { title: baseName(path), tooltip: path, text } : { title: "(missing)", tooltip: "", text: "" };
+}
+
 function quit(code: number): void {
-  App.Quit(code).catch((err) => console.error("quit failed", err));
+  Backend.Quit(code).catch((err) => console.error("quit failed", err));
 }
 
 /** The generated Chunk type uses enums; the frontend logic uses string unions. */
@@ -43,7 +55,7 @@ function setStatus(session: Session, version: string, left: string): void {
 }
 
 function charDiff(left: string, right: string): Promise<CharSpan[]> {
-  return App.CharDiff(left, right).then((spans) => (spans ?? []) as unknown as CharSpan[]);
+  return Backend.CharDiff(left, right).then((spans) => (spans ?? []) as unknown as CharSpan[]);
 }
 
 /** Sets the "theme" setting; it starts from the window URL (see main.go). */
@@ -54,27 +66,43 @@ const setTheme = installTheme(
 );
 
 async function main(): Promise<void> {
-  App.Settings()
+  Backend.Settings()
     .then((settings) => setTheme(settings?.theme))
     .catch((err) => console.error("loading settings failed", err));
   let session: Session;
   let version: string;
   try {
-    [session, version] = await Promise.all([App.LoadSession(), App.Version()]);
+    [session, version] = await Promise.all([Backend.LoadSession(), Backend.Version()]);
   } catch (err) {
     showError(`Could not load the files: ${err}`, () => quit(EXIT_ERROR));
     return;
   }
   document.title = `mergediff — ${session.title}`;
+  if (session.mode === Mode.DirDiff) {
+    const [left = "", right = ""] = session.paths ?? [];
+    renderDirView({
+      left,
+      right,
+      version,
+      backend: {
+        entries: () => Backend.DirEntries().then((e) => e ?? []),
+        progress: () => Backend.DirProgress(),
+        stats: () => Backend.DirStats(),
+        open: (path) => Backend.OpenEntry(path),
+        quit,
+      },
+    });
+    return;
+  }
   let rendered: Rendered;
   if (session.mode === Mode.Diff || session.mode === Mode.Scratch) {
     const scratch = session.mode === Mode.Scratch;
     const [leftPath = "", rightPath = ""] = session.paths ?? [];
     rendered = renderDiffView({
-      left: scratch ? { title: "Left", tooltip: "", text: "" } : { title: baseName(leftPath), tooltip: leftPath, text: session.local },
-      right: scratch ? { title: "Right", tooltip: "", text: "" } : { title: baseName(rightPath), tooltip: rightPath, text: session.remote },
+      left: scratch ? { title: "Left", tooltip: "", text: "" } : paneSpec(leftPath, session.local),
+      right: scratch ? { title: "Right", tooltip: "", text: "" } : paneSpec(rightPath, session.remote),
       chunks: chunksOf(session),
-      compare: scratch ? (l, r) => App.Compare(l, r).then((c) => (c ?? []) as unknown as MergeChunk[]) : undefined,
+      compare: scratch ? (l, r) => Backend.Compare(l, r).then((c) => (c ?? []) as unknown as MergeChunk[]) : undefined,
       charDiff,
       close: () => quit(EXIT_OK),
       status: (text) => (document.getElementById("status-left")!.textContent = text),
@@ -91,15 +119,19 @@ async function main(): Promise<void> {
         autoApplied: session.autoApplied,
       },
       {
-        save: (result) => App.Save(result),
+        save: (result) => Backend.Save(result),
         quit,
         charDiff,
         guardClose(handler) {
-          Events.On(CLOSE_REQUESTED, () => {
-            App.CloseRequestSeen().catch((err) => console.error("acknowledging close failed", err));
-            handler();
-          });
-          App.GuardClose(true).catch((err) => console.error("guarding close failed", err));
+          Window.Name()
+            .then((name) => {
+              Events.On(CLOSE_REQUESTED + name, () => {
+                Backend.CloseRequestSeen().catch((err) => console.error("acknowledging close failed", err));
+                handler();
+              });
+              return Backend.GuardClose(true);
+            })
+            .catch((err) => console.error("guarding close failed", err));
         },
       },
     );

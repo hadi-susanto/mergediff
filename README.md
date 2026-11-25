@@ -2,7 +2,8 @@
 
 A lightweight, cross-platform **3-way merge** and **2-way diff** tool with a
 native window, inspired by the JetBrains merge tool. One small binary for
-Windows, macOS and Linux that works as a Git `mergetool` and `difftool`.
+Windows, macOS and Linux that works as a Git `mergetool` and `difftool`,
+including `git difftool -d` (see [Git integration](GIT.md)).
 
 - Three panes, **Local | Result | Remote**, with an editable Result in the middle
 - Non-conflicting changes applied in one click (and undone in one step)
@@ -12,6 +13,8 @@ Windows, macOS and Linux that works as a Git `mergetool` and `difftool`.
   chunk-aligned scrolling
 - Syntax highlighting by file extension; light and dark themes that follow the
   system or a setting
+- A directory diff: every changed file of two directories (or of
+  `git difftool -d`) in one list, each opening in its own diff window
 - A scratch mode for comparing pasted text (`mergediff` without arguments)
 - Keeps the file's line endings (LF / CRLF) and trailing newline
 - Handles files of 10,000+ lines without lag
@@ -22,6 +25,12 @@ A 3-way merge with one conflict, in the light and dark themes:
 
 ![mergediff, light theme](docs/screenshots/mergediff-light.png)
 ![mergediff, dark theme](docs/screenshots/mergediff-dark.png)
+
+The directory diff (design mockups until real screenshots are added), flat
+and grouped by directory:
+
+![Directory diff, light theme](docs/mockups/mergediff-dir-diff-light.png)
+![Directory diff grouped by directory, dark theme](docs/mockups/mergediff-dir-diff-grouped-dark.png)
 
 ## Installation
 
@@ -80,6 +89,7 @@ On macOS, `make build UNIVERSAL=1` builds one binary for arm64 and amd64, and
 ```
 mergediff BASE LOCAL REMOTE -o MERGED [--auto-apply]    3-way merge
 mergediff LEFT RIGHT                                    2-way diff (read-only)
+mergediff LEFTDIR RIGHTDIR                              directory diff (git difftool -d)
 mergediff                                               scratch diff of pasted text
 mergediff settings [list | get KEY | set KEY VALUE | unset KEY | path]
 mergediff --help | --version
@@ -95,6 +105,16 @@ Any window can also take `--theme system|light|dark` and
   the Result freely. `↑` / `↓` move between changes, *↑ Conflict* / *↓ Conflict* between conflicts. *Save* writes
   MERGED.
 - **Diff:** two read-only panes with the differences highlighted.
+- **Directory diff:** when both arguments are directories, one window lists
+  the files that differ, sorted by path, with their status (**M**odified,
+  **A**dded, **D**eleted, or **!** when a file cannot be read) and the lines
+  added and removed. Double-click a file or press `Enter` to open it in a
+  diff window of its own; added and deleted files open with the missing side
+  empty. Filter by path, pick a status with the chips, *Show unchanged*
+  files, or *Group by directory*. Binary files, invalid UTF-8 and files over
+  5 MB are listed but cannot be opened. Large directories show a
+  "Comparing…" count while they are read. Closing the list closes the files
+  opened from it. A directory and a file together are a usage error.
 - **Scratch:** started without arguments, mergediff opens two empty, editable
   panes. Paste or type text into both and press *⟳ Refresh* (`F5` or
   `Ctrl+Enter`) to compare them. After an edit the highlights are cleared
@@ -105,11 +125,11 @@ missing BASE (Git's add/add conflicts) is treated as empty.
 
 Exit codes:
 
-| Code | Meaning                                                                                                       |
-|------|---------------------------------------------------------------------------------------------------------------|
-| `0`  | merge saved with all conflicts resolved, the diff or scratch window closed, or a `settings` command succeeded |
-| `1`  | cancelled, or closed with unresolved conflicts or unsaved changes                                             |
-| `2`  | usage, I/O or config file error (message on stderr)                                                           |
+| Code | Meaning                                                                                                                  |
+|------|--------------------------------------------------------------------------------------------------------------------------|
+| `0`  | merge saved with all conflicts resolved, the diff, directory or scratch window closed, or a `settings` command succeeded |
+| `1`  | cancelled, or closed with unresolved conflicts or unsaved changes                                                        |
+| `2`  | usage, I/O or config file error (message on stderr)                                                                      |
 
 Keyboard shortcuts (Cmd instead of Ctrl on macOS):
 
@@ -121,6 +141,17 @@ Keyboard shortcuts (Cmd instead of Ctrl on macOS):
 | `Ctrl+Z`            | undo (an "apply all" is one step)                                                 |
 | `Esc`               | cancel (asks first if the result was edited); closes a diff, not a scratch window |
 | `F5` / `Ctrl+Enter` | refresh the comparison (scratch mode)                                             |
+
+In the directory diff:
+
+| Keys                      | Action                                                         |
+|---------------------------|----------------------------------------------------------------|
+| `↑` / `↓`, `Home` / `End` | move the selection                                             |
+| `Enter` or double-click   | open the selected file (on a directory header: fold / unfold)  |
+| `←` / `→`                 | fold / unfold a directory (Group by directory)                 |
+| `F7` / `Shift+F7`         | open the next / previous file                                  |
+| `Ctrl+F`                  | filter by path                                                 |
+| `Esc`                     | clear the filter; with an empty filter, close the window       |
 
 ## Settings
 
@@ -161,7 +192,9 @@ content follows the setting.
 
 To compare a file literally named `settings`, write `./settings`.
 
-## Git configuration
+## Git integration
+
+Set mergediff up as Git's merge and diff tool:
 
 ```sh
 git config --global merge.tool mergediff
@@ -171,17 +204,17 @@ git config --global diff.tool mergediff
 git config --global difftool.mergediff.cmd 'mergediff "$LOCAL" "$REMOTE"'
 ```
 
-Then use `git mergetool` during a conflicted merge, rebase or cherry-pick,
-and `git difftool` to view changes. With `trustExitCode`, Git marks a file
-resolved only when mergediff saved it with no conflicts left (exit `0`).
-Add `--auto-apply` to the mergetool command to start with the
-non-conflicting changes already applied.
+Then `git mergetool` resolves conflicts, `git difftool` shows changes file
+by file and `git difftool -d` shows them all in one directory diff.
+[GIT.md](GIT.md) explains each of them, the exit codes Git sees, useful
+options and troubleshooting.
 
 ## Development
 
 ```
 make help              # list targets
-make dev               # run with hot reload on testdata/dev (ARGS="..." for other files)
+make dev               # run with hot reload on testdata/dev (ARGS="..." for other files,
+                       #   e.g. ARGS="testdata/dev/dirdiff/left testdata/dev/dirdiff/right")
 make build             # production binary in bin/
 make check             # go vet, gofmt check, type-check, Go and frontend tests
 make test              # clean, check (uncached), then end-to-end tests
@@ -190,12 +223,13 @@ make version           # version string a build would embed
 make clean             # remove build output and Wails' task cache
 ```
 
-- Go code lives in `internal/` (`config`, `textio`, `diff`, `merge`, `session`); the
-  root package only wires the CLI and Wails together.
+- Go code lives in `internal/` (`config`, `textio`, `diff`, `merge`, `dirdiff`,
+  `session`); the root package only wires the CLI and Wails together.
 - The frontend (`frontend/src`) is vanilla TypeScript with CodeMirror 6. Logic
   modules are DOM-free and tested with `node --test`.
 - End-to-end tests (`make e2e`, Linux/X11) drive the real window with
-  `git mergetool`; see [scripts/e2e/README.md](scripts/e2e/README.md).
+  `git mergetool` and `git difftool -d`; see
+  [scripts/e2e/README.md](scripts/e2e/README.md).
 
 ### Versions
 
