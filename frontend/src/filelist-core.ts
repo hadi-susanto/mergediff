@@ -182,3 +182,73 @@ export function chipCounts<T>(rows: readonly T[], chips: readonly Chip<T>[]): Ma
   }
   return counts;
 }
+
+/** Label of the group of files directly in the compared root. */
+export const ROOT_LABEL = "(root)";
+
+/** A directory header row in a grouped list. */
+export interface GroupItem {
+  kind: "group";
+  /** The directory with its trailing "/", or "" for the root. */
+  dir: string;
+  /** What the header shows: dir, or ROOT_LABEL. */
+  label: string;
+  /** Files in the group by key (e.g. status), before collapsing. */
+  counts: Map<string, number>;
+  /** How many files the group has. */
+  size: number;
+  collapsed: boolean;
+}
+
+/** A file row; in a grouped list it shows only the file name. */
+export interface RowItem<T> {
+  kind: "row";
+  row: T;
+  /** The group's dir in a grouped list; undefined in a flat list. */
+  group?: string;
+}
+
+/** What a list shows, top to bottom. */
+export type ListItem<T> = GroupItem | RowItem<T>;
+
+/** The items of a flat list: every row, in order. */
+export function flatItems<T>(rows: readonly T[]): RowItem<T>[] {
+  return rows.map((row) => ({ kind: "row", row }));
+}
+
+/**
+ * Groups rows by parent directory, flat (no tree): the root group first,
+ * labelled ROOT_LABEL, then the other directories sorted by path. Rows keep
+ * their order within a group. A collapsed group (dir in collapsed) shows
+ * only its header. Groups without rows do not appear, so filtering first
+ * hides groups left empty.
+ */
+export function groupItems<T extends { path: string }>(
+  rows: readonly T[],
+  key: (row: T) => string,
+  collapsed: ReadonlySet<string>,
+): ListItem<T>[] {
+  const groups = new Map<string, T[]>();
+  for (const r of rows) {
+    const { dir } = splitPath(r.path);
+    let g = groups.get(dir);
+    if (!g) groups.set(dir, (g = []));
+    g.push(r);
+  }
+  const dirs = [...groups.keys()].sort((a, b) => (a === "" ? -1 : b === "" ? 1 : comparePaths(a, b)));
+  const items: ListItem<T>[] = [];
+  for (const dir of dirs) {
+    const members = groups.get(dir)!;
+    const isCollapsed = collapsed.has(dir);
+    items.push({
+      kind: "group",
+      dir,
+      label: dir === "" ? ROOT_LABEL : dir,
+      counts: countBy(members, key),
+      size: members.length,
+      collapsed: isCollapsed,
+    });
+    if (!isCollapsed) for (const row of members) items.push({ kind: "row", row, group: dir });
+  }
+  return items;
+}

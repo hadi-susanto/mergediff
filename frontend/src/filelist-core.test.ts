@@ -4,12 +4,17 @@ import {
   chipCounts,
   countBy,
   filterRows,
+  flatItems,
+  groupItems,
   matchesText,
   middleEllipsis,
   Selection,
   sortByPath,
   splitPath,
   type Chip,
+  type GroupItem,
+  type ListItem,
+  type RowItem,
 } from "./filelist-core.ts";
 
 describe("splitPath", () => {
@@ -176,5 +181,68 @@ describe("countBy and chipCounts", () => {
       { id: "deleted", label: "Deleted", keep: (r) => r.s === "deleted" },
     ];
     assert.deepEqual([...chipCounts(rows, chips)], [["all", 3], ["added", 2], ["deleted", 0]]);
+  });
+});
+
+describe("groupItems", () => {
+  const rows = [
+    { path: "pom.xml", s: "modified" },
+    { path: "src/b/B.java", s: "added" },
+    { path: "src/a/A.java", s: "modified" },
+    { path: "src/a/A2.java", s: "added" },
+    { path: ".github/ci.yml", s: "deleted" },
+    { path: "README.md", s: "added" },
+  ];
+  const sorted = sortByPath(rows);
+  const shape = (items: ListItem<{ path: string; s: string }>[]) =>
+    items.map((i) => (i.kind === "group" ? `[${i.label}${i.collapsed ? " +" : ""}]` : i.row.path));
+
+  it("puts the root first, then directories sorted by path, rows in order", () => {
+    assert.deepEqual(shape(groupItems(sorted, (r) => r.s, new Set())), [
+      "[(root)]",
+      "README.md",
+      "pom.xml",
+      "[.github/]",
+      ".github/ci.yml",
+      "[src/a/]",
+      "src/a/A.java",
+      "src/a/A2.java",
+      "[src/b/]",
+      "src/b/B.java",
+    ]);
+  });
+
+  it("counts each group's rows by key", () => {
+    const items = groupItems(sorted, (r) => r.s, new Set());
+    const a = items.find((i) => i.kind === "group" && i.dir === "src/a/") as GroupItem;
+    assert.deepEqual([...a.counts], [["modified", 1], ["added", 1]]);
+    assert.equal(a.size, 2);
+    const root = items[0] as GroupItem;
+    assert.equal(root.dir, "");
+    assert.deepEqual([...root.counts], [["added", 1], ["modified", 1]]);
+  });
+
+  it("collapsed groups show only their header and keep their counts", () => {
+    const items = groupItems(sorted, (r) => r.s, new Set(["src/a/", ""]));
+    assert.deepEqual(shape(items), ["[(root) +]", "[.github/]", ".github/ci.yml", "[src/a/ +]", "[src/b/]", "src/b/B.java"]);
+    assert.equal((items[3] as GroupItem).size, 2);
+  });
+
+  it("rows know their group; filtering first hides empty groups", () => {
+    const items = groupItems(filterRows(sorted, "java"), (r) => r.s, new Set());
+    assert.deepEqual(shape(items), ["[src/a/]", "src/a/A.java", "src/a/A2.java", "[src/b/]", "src/b/B.java"]);
+    const row = items[1] as RowItem<{ path: string }>;
+    assert.equal(row.group, "src/a/");
+  });
+
+  it("no rows, no groups", () => {
+    assert.deepEqual(groupItems([], () => "", new Set()), []);
+  });
+
+  it("flatItems keeps every row without groups", () => {
+    assert.deepEqual(
+      flatItems(sorted).map((i) => [i.kind, i.row.path, i.group]),
+      sorted.map((r) => ["row", r.path, undefined]),
+    );
   });
 });
