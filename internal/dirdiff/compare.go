@@ -29,8 +29,9 @@ func compareContents(entries []Entry, p *Progress) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			bufs := &buffers{a: make([]byte, chunkSize), b: make([]byte, chunkSize)}
 			for e := range jobs {
-				check(e)
+				check(e, bufs)
 				p.addCompared(1)
 			}
 		}()
@@ -48,13 +49,17 @@ func compareContents(entries []Entry, p *Progress) {
 	wg.Wait()
 }
 
+// buffers are one worker's read buffers, reused for every file pair so
+// tens of thousands of comparisons do not churn the garbage collector.
+type buffers struct{ a, b []byte }
+
 // check settles one entry (see compareContents).
-func check(e *Entry) {
+func check(e *Entry, bufs *buffers) {
 	var err error
 	switch {
 	case e.Status == Modified && e.LeftSize == e.RightSize:
 		var same bool
-		if same, err = sameFiles(e.Left, e.Right); err == nil && same {
+		if same, err = sameFiles(e.Left, e.Right, bufs); err == nil && same {
 			e.Status = Unchanged
 		}
 	default:
@@ -80,7 +85,7 @@ func readable(path string) error {
 
 // sameFiles reports whether two files have the same bytes, reading both
 // a chunk at a time so large files are never loaded whole.
-func sameFiles(a, b string) (bool, error) {
+func sameFiles(a, b string, bufs *buffers) (bool, error) {
 	fa, err := os.Open(a)
 	if err != nil {
 		return false, err
@@ -91,7 +96,10 @@ func sameFiles(a, b string) (bool, error) {
 		return false, err
 	}
 	defer fb.Close()
-	bufA, bufB := make([]byte, chunkSize), make([]byte, chunkSize)
+	if bufs == nil {
+		bufs = &buffers{a: make([]byte, chunkSize), b: make([]byte, chunkSize)}
+	}
+	bufA, bufB := bufs.a, bufs.b
 	for {
 		na, errA := io.ReadFull(fa, bufA)
 		nb, errB := io.ReadFull(fb, bufB)

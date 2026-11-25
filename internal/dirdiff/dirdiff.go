@@ -59,13 +59,21 @@ type node struct {
 // the end, also after an error.
 func Compare(left, right string, p *Progress) ([]Entry, error) {
 	defer p.finish()
+	// Walk both trees at once.
+	var r map[string]*node
+	var errR error
+	walked := make(chan struct{})
+	go func() {
+		defer close(walked)
+		r, errR = walk(right, p)
+	}()
 	l, err := walk(left, p)
+	<-walked
 	if err != nil {
 		return nil, fmt.Errorf("read LEFT: %w", err)
 	}
-	r, err := walk(right, p)
-	if err != nil {
-		return nil, fmt.Errorf("read RIGHT: %w", err)
+	if errR != nil {
+		return nil, fmt.Errorf("read RIGHT: %w", errR)
 	}
 	paths := make([]string, 0, len(l)+len(r))
 	for p := range l {

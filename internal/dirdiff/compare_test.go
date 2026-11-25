@@ -80,7 +80,7 @@ func TestSameFilesSizesDiffer(t *testing.T) {
 	a, b := filepath.Join(dir, "a"), filepath.Join(dir, "b")
 	os.WriteFile(a, []byte("abc"), 0o644)
 	os.WriteFile(b, []byte("abcd"), 0o644)
-	if same, err := sameFiles(a, b); err != nil || same {
+	if same, err := sameFiles(a, b, nil); err != nil || same {
 		t.Errorf("sameFiles(abc, abcd) = %v, %v; want false, nil", same, err)
 	}
 }
