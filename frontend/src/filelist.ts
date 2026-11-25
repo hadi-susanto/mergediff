@@ -66,6 +66,14 @@ export function renderPath(cell: HTMLElement, path: string, nameOnly = false): v
   cell.appendChild(n);
 }
 
+/** How close two presses on the same row must be to count as a double-click. */
+export const DOUBLE_CLICK_MS = 500;
+
+/** Whether a press on row index at time completes a double-click after last. */
+export function isDoubleClick(last: { index: number; time: number }, index: number, time: number): boolean {
+  return last.index === index && index >= 0 && time - last.time <= DOUBLE_CLICK_MS;
+}
+
 /** Identifies an item across setItems calls, to keep the selection. */
 function itemKey<T extends { path: string }>(item: ListItem<T> | undefined): string | undefined {
   if (!item) return undefined;
@@ -81,6 +89,20 @@ export class FileList<T extends { path: string }> {
   private items: ListItem<T>[] = [];
   private message: HTMLElement | null = null;
   private frame = 0;
+  /**
+   * Row elements in the DOM, by item index. They stay in place while the
+   * selection changes: replacing the element under the mouse would stop
+   * the click from focusing the list and the double-click from firing.
+   */
+  private rendered = new Map<number, HTMLElement>();
+  /** The rendered rows show stale content (new items, or redraw()). */
+  private dirty = false;
+  /**
+   * The last plain press, to recognise a double-click ourselves: the
+   * browser's dblclick is lost when a redraw (e.g. line counts arriving)
+   * replaces the clicked cell between the two presses.
+   */
+  private lastPress = { index: -1, time: 0 };
 
   constructor(o: FileListOptions<T>) {
     this.o = o;
@@ -120,7 +142,6 @@ export class FileList<T extends { path: string }> {
     new ResizeObserver(() => this.schedule()).observe(this.body);
     // One set of mouse handlers for all rows: rows come and go while scrolling.
     this.canvas.addEventListener("mousedown", (e) => this.onMouseDown(e));
-    this.canvas.addEventListener("dblclick", (e) => this.onDoubleClick(e));
   }
 
   /** Shows items (in the given order), keeping the selected item if it is still listed. */
@@ -133,8 +154,9 @@ export class FileList<T extends { path: string }> {
     this.sel.reset(items.length, () => true, again);
     if (this.sel.current < 0) this.sel.edge(1);
     this.canvas.style.height = `${items.length * ROW_HEIGHT}px`;
-    this.render();
+    this.dirty = true;
     this.reveal();
+    this.render();
     this.notify();
   }
 
@@ -144,6 +166,7 @@ export class FileList<T extends { path: string }> {
     this.sel.reset(0);
     this.canvas.style.height = "0px";
     this.canvas.replaceChildren();
+    this.rendered.clear();
     if (!this.message) {
       this.message = document.createElement("div");
       this.message.className = "fl-message";
@@ -155,6 +178,7 @@ export class FileList<T extends { path: string }> {
 
   /** Renders the rows in view again, e.g. after line counts arrived. Batched per frame. */
   redraw(): void {
+    this.dirty = true;
     this.schedule();
   }
 
@@ -219,24 +243,52 @@ export class FileList<T extends { path: string }> {
     });
   }
 
-  /** Builds the DOM for the items in view. */
+  /**
+   * Puts the items in view into the DOM: keeps the row elements already
+   * there (refilling them when dirty), adds the missing ones, removes those
+   * scrolled out, then paints the selection.
+   */
   private render(): void {
     const { start, end } = visibleWindow(this.body.scrollTop, this.body.clientHeight, ROW_HEIGHT, this.items.length);
-    const els: HTMLElement[] = [];
-    for (let i = start; i < end; i++) els.push(this.makeItem(i));
-    this.canvas.replaceChildren(...els);
+    for (const [i, el] of this.rendered) {
+      if (i < start || i >= end) {
+        el.remove();
+        this.rendered.delete(i);
+      }
+    }
+    for (let i = start; i < end; i++) {
+      let el = this.rendered.get(i);
+      if (!el) {
+        el = document.createElement("div");
+        el.setAttribute("role", "row");
+        el.dataset.index = String(i);
+        el.style.transform = `translateY(${i * ROW_HEIGHT}px)`;
+        this.fill(el, i);
+        this.rendered.set(i, el);
+        this.canvas.appendChild(el);
+      } else if (this.dirty) {
+        this.fill(el, i);
+      }
+    }
+    this.dirty = false;
+    this.paint();
   }
 
-  private makeItem(i: number): HTMLElement {
+  /** Marks the selected rows among those in the DOM. */
+  private paint(): void {
+    for (const [i, el] of this.rendered) {
+      const selected = this.sel.has(i);
+      el.classList.toggle("fl-selected", selected);
+      el.setAttribute("aria-selected", String(selected));
+    }
+  }
+
+  /** Fills row element el with item i's content. */
+  private fill(el: HTMLElement, i: number): void {
     const it = this.items[i];
-    const el = document.createElement("div");
     el.className = "fl-row";
-    el.setAttribute("role", "row");
-    el.dataset.index = String(i);
-    el.style.transform = `translateY(${i * ROW_HEIGHT}px)`;
-    const selected = this.sel.has(i);
-    el.classList.toggle("fl-selected", selected);
-    el.setAttribute("aria-selected", String(selected));
+    el.replaceChildren();
+    el.removeAttribute("aria-expanded");
     if (it.kind === "group") {
       el.classList.add("fl-group");
       el.setAttribute("aria-expanded", String(!it.collapsed));
@@ -245,7 +297,7 @@ export class FileList<T extends { path: string }> {
       cell.setAttribute("role", "gridcell");
       this.o.renderGroup(it, cell);
       el.appendChild(cell);
-      return el;
+      return;
     }
     const nameOnly = it.group !== undefined;
     for (const c of this.o.columns) {
@@ -257,7 +309,6 @@ export class FileList<T extends { path: string }> {
     }
     if (nameOnly) el.classList.add("fl-in-group");
     el.classList.toggle("fl-blocked", this.o.blocked(it.row) !== null);
-    return el;
   }
 
   private indexAt(e: MouseEvent): number {
@@ -275,15 +326,14 @@ export class FileList<T extends { path: string }> {
       this.o.toggleGroup(it.dir, !it.collapsed);
       return;
     }
+    const plain = !e.shiftKey && !e.ctrlKey && !e.metaKey;
     const ok = e.shiftKey ? this.sel.extendTo(i) : e.ctrlKey || e.metaKey ? this.sel.toggle(i) : this.sel.select(i);
     if (ok) this.afterMove(false);
-  }
-
-  private onDoubleClick(e: MouseEvent): void {
-    const i = this.indexAt(e);
-    if (i < 0 || this.items[i].kind === "group") return; // a single click already toggled it
-    if (this.sel.select(i)) this.afterMove(false);
-    this.openCurrent();
+    // A double-click opens the row under the mouse, never another one: only
+    // when this press selected that very row.
+    const double = plain && ok && this.sel.current === i && isDoubleClick(this.lastPress, i, e.timeStamp);
+    this.lastPress = double || !ok ? { index: -1, time: 0 } : { index: plain ? i : -1, time: e.timeStamp };
+    if (double) this.openCurrent();
   }
 
   private onKey(e: KeyboardEvent): void {
@@ -323,10 +373,10 @@ export class FileList<T extends { path: string }> {
     if (moved) this.afterMove();
   }
 
-  /** After the selection moved: repaint, scroll it into view (unless clicked), report it. */
+  /** After the selection moved: scroll it into view (unless clicked), repaint, report it. */
   private afterMove(scroll = true): void {
     if (scroll) this.reveal();
-    this.render();
+    this.render(); // only adds rows scrolled into view; existing rows stay
     this.notify();
   }
 
