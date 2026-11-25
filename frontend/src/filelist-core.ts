@@ -139,3 +139,46 @@ export class Selection {
     return -1;
   }
 }
+
+/** Whether path contains text, ignoring case. Empty text matches everything. */
+export function matchesText(path: string, text: string): boolean {
+  if (!text) return true;
+  return path.toLowerCase().includes(text.toLowerCase());
+}
+
+/** The rows whose path contains text (ignoring case) and that keep() accepts. */
+export function filterRows<T extends { path: string }>(
+  rows: readonly T[],
+  text: string,
+  keep: (row: T) => boolean = () => true,
+): T[] {
+  const needle = text.toLowerCase();
+  return rows.filter((r) => (!needle || r.path.toLowerCase().includes(needle)) && keep(r));
+}
+
+/** Counts rows by key, e.g. by status. */
+export function countBy<T>(rows: readonly T[], key: (row: T) => string): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const r of rows) {
+    const k = key(r);
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/** A chip of the filter bar: a name, which rows it keeps, and how many there are. */
+export interface Chip<T> {
+  id: string;
+  label: string;
+  keep(row: T): boolean;
+}
+
+/** How many rows each chip keeps. */
+export function chipCounts<T>(rows: readonly T[], chips: readonly Chip<T>[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const c of chips) counts.set(c.id, 0);
+  for (const r of rows) {
+    for (const c of chips) if (c.keep(r)) counts.set(c.id, counts.get(c.id)! + 1);
+  }
+  return counts;
+}

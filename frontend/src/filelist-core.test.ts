@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { middleEllipsis, Selection, sortByPath, splitPath } from "./filelist-core.ts";
+import {
+  chipCounts,
+  countBy,
+  filterRows,
+  matchesText,
+  middleEllipsis,
+  Selection,
+  sortByPath,
+  splitPath,
+  type Chip,
+} from "./filelist-core.ts";
 
 describe("splitPath", () => {
   it("splits the directory (with its slash) from the file name", () => {
@@ -123,5 +133,48 @@ describe("Selection", () => {
     assert.deepEqual(s.rows(), [5]);
     s.reset(3);
     assert.equal(s.current, -1);
+  });
+});
+
+describe("filterRows", () => {
+  const rows = [{ path: "src/Main.java" }, { path: "src/util/Strings.java" }, { path: "README.md" }];
+  it("matches a substring of the path, ignoring case", () => {
+    assert.deepEqual(
+      filterRows(rows, "MAIN").map((r) => r.path),
+      ["src/Main.java"],
+    );
+    assert.deepEqual(
+      filterRows(rows, "src/").map((r) => r.path),
+      ["src/Main.java", "src/util/Strings.java"],
+    );
+  });
+  it("empty text keeps everything", () => {
+    assert.equal(filterRows(rows, "").length, 3);
+  });
+  it("applies keep() too", () => {
+    assert.deepEqual(
+      filterRows(rows, "java", (r) => !r.path.includes("util")).map((r) => r.path),
+      ["src/Main.java"],
+    );
+  });
+  it("matchesText agrees", () => {
+    assert.ok(matchesText("src/Main.java", "main"));
+    assert.ok(matchesText("x", ""));
+    assert.ok(!matchesText("src/Main.java", "test"));
+  });
+});
+
+describe("countBy and chipCounts", () => {
+  const rows = [{ s: "added" }, { s: "modified" }, { s: "added" }, { s: "unchanged" }];
+  it("counts by key", () => {
+    assert.deepEqual([...countBy(rows, (r) => r.s)], [["added", 2], ["modified", 1], ["unchanged", 1]]);
+  });
+  it("counts what each chip keeps; chips may overlap", () => {
+    const chips: Chip<{ s: string }>[] = [
+      { id: "all", label: "All changes", keep: (r) => r.s !== "unchanged" },
+      { id: "added", label: "Added", keep: (r) => r.s === "added" },
+      { id: "deleted", label: "Deleted", keep: (r) => r.s === "deleted" },
+    ];
+    assert.deepEqual([...chipCounts(rows, chips)], [["all", 3], ["added", 2], ["deleted", 0]]);
   });
 });
