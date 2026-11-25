@@ -20,6 +20,7 @@ import {
   type ListItem,
 } from "./filelist-core.ts";
 import { FileList, renderPath, type Column } from "./filelist.ts";
+import { makeFilterBar, num } from "./filterbar.ts";
 import { installShortcuts } from "./keys.ts";
 
 /** What the directory view needs from the backend and the window. */
@@ -100,11 +101,6 @@ export function countsText(entries: readonly Entry[]): string {
   const parts = [`${num(changed)} changed`, `${num(unchanged)} unchanged`];
   if (errors > 0) parts.push(`${num(errors)} ${errors === 1 ? "error" : "errors"}`);
   return parts.join(" · ");
-}
-
-/** n with thousands separators: 84,317. */
-function num(n: number): string {
-  return n.toLocaleString("en-US");
 }
 
 /** The "Comparing…" text for a progress snapshot. */
@@ -231,74 +227,22 @@ function renderGroup(g: GroupItem, cell: HTMLElement): void {
 }
 
 /** The filter bar: text filter, chips, Show unchanged and Group by directory. */
-interface FilterBar {
+interface DirFilterBar {
   root: HTMLElement;
   input: HTMLInputElement;
   /** Updates the chip counts, the active chip and the Show unchanged label. */
   update(view: DirView, f: DirFilter): void;
 }
 
-function makeFilterBar(f: DirFilter, changed: () => void): FilterBar {
-  const root = document.createElement("div");
-  root.className = "filter-bar";
-
-  const input = document.createElement("input");
-  input.type = "search";
-  input.className = "filter-input";
-  input.placeholder = "Filter files…";
-  input.setAttribute("aria-label", "Filter files");
-  input.addEventListener("input", () => {
-    f.text = input.value;
-    changed();
-  });
-
-  const chips = document.createElement("div");
-  chips.className = "chips";
-  chips.setAttribute("role", "radiogroup");
-  const chipButtons = DIR_CHIPS.map((c) => {
-    const b = document.createElement("button");
-    b.className = "chip";
-    b.setAttribute("role", "radio");
-    b.addEventListener("click", () => {
-      f.chip = c.id;
-      changed();
-    });
-    chips.appendChild(b);
-    return b;
-  });
-
-  const checkbox = (label: string, on: boolean, set: (v: boolean) => void) => {
-    const l = document.createElement("label");
-    l.className = "check";
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    box.checked = on;
-    box.addEventListener("change", () => {
-      set(box.checked);
-      changed();
-    });
-    const text = span("", label);
-    l.append(box, text);
-    return { l, text };
-  };
-  const unchanged = checkbox("Show unchanged", f.showUnchanged, (v) => (f.showUnchanged = v));
-  const grouped = checkbox("Group by directory", f.grouped, (v) => (f.grouped = v));
-
-  const spacer = document.createElement("div");
-  spacer.className = "filter-spacer";
-  root.append(input, chips, spacer, unchanged.l, grouped.l);
-
+function makeDirFilterBar(f: DirFilter, changed: () => void): DirFilterBar {
+  const bar = makeFilterBar(f, DIR_CHIPS, changed);
+  const unchanged = bar.checkbox("Show unchanged", f.showUnchanged, (v) => (f.showUnchanged = v));
   return {
-    root,
-    input,
+    root: bar.root,
+    input: bar.input,
     update(view, f) {
-      DIR_CHIPS.forEach((c, i) => {
-        const on = c.id === f.chip;
-        chipButtons[i].textContent = `${c.label} ${num(view.chipCounts.get(c.id) ?? 0)}`;
-        chipButtons[i].classList.toggle("chip-active", on);
-        chipButtons[i].setAttribute("aria-checked", String(on));
-      });
-      unchanged.l.hidden = view.unchanged === 0;
+      bar.update(view.chipCounts, f.chip);
+      unchanged.label.hidden = view.unchanged === 0;
       unchanged.text.textContent = `Show unchanged (${num(view.unchanged)})`;
     },
   };
@@ -346,7 +290,7 @@ export function renderDirView(o: DirViewOptions): void {
     refused: (row, reason) => setHint(`${row.path} cannot be opened: ${reason}`),
     selected: () => setHint(),
   });
-  const bar = makeFilterBar(filter, show);
+  const bar = makeDirFilterBar(filter, show);
   bar.input.addEventListener("keydown", (e) => {
     if (e.key === "ArrowDown" || e.key === "Enter") {
       e.preventDefault();

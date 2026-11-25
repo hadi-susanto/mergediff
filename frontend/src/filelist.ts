@@ -46,6 +46,8 @@ export interface FileListOptions<T extends { path: string }> {
   selected?(rows: T[]): void;
   /** Ctrl/Cmd+click and Shift+click select several rows. */
   multi?: boolean;
+  /** Extra CSS classes for a row element, e.g. "fl-faded" for resolved rows. */
+  rowClass?(row: T): string;
 }
 
 /** Fills cell with a path: the muted directory part (truncated first) and the bold file name. */
@@ -309,6 +311,8 @@ export class FileList<T extends { path: string }> {
     }
     if (nameOnly) el.classList.add("fl-in-group");
     el.classList.toggle("fl-blocked", this.o.blocked(it.row) !== null);
+    const extra = this.o.rowClass?.(it.row);
+    if (extra) el.classList.add(...extra.split(/\s+/).filter(Boolean));
   }
 
   private indexAt(e: MouseEvent): number {
