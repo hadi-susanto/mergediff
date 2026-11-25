@@ -54,6 +54,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return exitOK
 	case cmdSettings:
 		return runSettings(opts.settingsArgs, stdout, stderr)
+	case cmdResolve:
+		fmt.Fprintln(stderr, "mergediff: resolve is not implemented yet")
+		return exitError
 	}
 
 	var sess *session.Session

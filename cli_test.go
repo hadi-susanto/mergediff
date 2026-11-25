@@ -39,6 +39,13 @@ func TestParseArgs(t *testing.T) {
 		{"settings flags anywhere", []string{"--theme", "dark", "B", "L", "R", "-o", "M", "--window-state=maximized"},
 			options{cmd: cmdMerge, base: "B", local: "L", remote: "R", output: "M",
 				settings: []setting{{"theme", "dark"}, {"window-state", "maximized"}}}},
+		{"resolve", []string{"resolve"}, options{cmd: cmdResolve}},
+		{"resolve with paths and options", []string{"resolve", "src", "--auto-apply", "--theme", "dark", "--", "-x"},
+			options{cmd: cmdResolve, autoApply: true, paths: []string{"src", "-x"}, settings: []setting{{"theme", "dark"}}}},
+		{"resolve --help", []string{"resolve", "--help"}, options{cmd: cmdHelp}},
+		{"./resolve is a path", []string{"./resolve", "b"}, options{cmd: cmdDiff, left: "./resolve", right: "b"}},
+		{"resolve after -- is a path", []string{"--", "resolve", "b"}, options{cmd: cmdDiff, left: "resolve", right: "b"}},
+		{"resolve not first is a path", []string{"a", "resolve"}, options{cmd: cmdDiff, left: "a", right: "resolve"}},
 		{"theme with =", []string{"a", "b", "--theme=system"},
 			options{cmd: cmdDiff, left: "a", right: "b", settings: []setting{{"theme", "system"}}}},
 	}
@@ -77,6 +84,8 @@ func TestParseArgsErrors(t *testing.T) {
 		{"theme without value", []string{"a", "b", "--theme"}, "--theme needs a value (system, light, dark)"},
 		{"theme twice", []string{"a", "b", "--theme", "dark", "--theme=light"}, "--theme given more than once"},
 		{"bad window state", []string{"a", "b", "--window-state=full"}, "allowed: normal, maximized"},
+		{"resolve with output", []string{"resolve", "-o", "m"}, "-o is not valid with resolve"},
+		{"resolve unknown option", []string{"resolve", "--ours"}, "unknown option --ours"},
 		{"settings key needs two dashes", []string{"a", "b", "-theme", "dark"}, "unknown option -theme"},
 	}
 	for _, tt := range tests {
