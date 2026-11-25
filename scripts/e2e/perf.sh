@@ -41,4 +41,18 @@ ui click Save click "Save anyway"
 finish_app
 check "exit 1 (conflicts left)" test $RC -eq 1
 check "result saved with the typing" test "$(head -c 13 "$L/out.go")" = "typing check "
+
+section "20,000-file directory diff"
+python3 "$E2E_DIR/gen-dirs.py" "$WORK/dirs" 20000 500
+t0=$(now)
+start_app "$WORK/dirs/left" "$WORK/dirs/right"
+ui wait find "All changes 500" find "Show unchanged (19,500)"
+t1=$(now)
+# Includes starting the window (~1 s); the comparison itself is held to
+# 1 s by TestCompareLargeTreeIsFast.
+check "list shown within 3 s of starting ($(secs "$t0" "$t1") s)" within "$t0" "$t1" 3
+focus "mergediff — Compare directories"
+ui key End key Escape
+finish_app
+check "closing the list exits 0" test $RC -eq 0
 summary

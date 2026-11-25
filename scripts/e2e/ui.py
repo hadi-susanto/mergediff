@@ -3,8 +3,8 @@
 
 Usage: ui.py STEP [STEP ...]
   wait                 wait until the mergediff window's buttons are accessible
-  dump                 print buttons
-  click NAME[#N]       click the N-th (0-based) button named NAME
+  dump                 print buttons, chips and checkboxes
+  click NAME[#N]       click the N-th (0-based) button, chip or checkbox named NAME
   key COMBO            e.g. ctrl+z, ctrl+s, shift+F7, Escape (XTest)
   type TEXT            type TEXT into the focused widget
   scroll X Y N         move the pointer to screen X,Y and wheel N notches (N<0 = up)
@@ -42,8 +42,13 @@ def find_app():
     return None
 
 
+# Clickable controls: buttons, and the directory view's filter chips (radio
+# buttons) and checkboxes.
+CONTROL_ROLES = ("push button", "button", "radio button", "toggle button", "check box")
+
+
 def buttons(app):
-    return pyatspi.findAllDescendants(app, lambda n: n.getRoleName() in ("push button", "button"))
+    return pyatspi.findAllDescendants(app, lambda n: n.getRoleName() in CONTROL_ROLES)
 
 
 def wait(timeout=30):
