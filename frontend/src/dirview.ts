@@ -97,14 +97,19 @@ export function countsText(entries: readonly Entry[]): string {
     else if (e.status === "error") errors++;
     else changed++;
   }
-  const parts = [`${changed} changed`, `${unchanged} unchanged`];
-  if (errors > 0) parts.push(`${errors} ${errors === 1 ? "error" : "errors"}`);
+  const parts = [`${num(changed)} changed`, `${num(unchanged)} unchanged`];
+  if (errors > 0) parts.push(`${num(errors)} ${errors === 1 ? "error" : "errors"}`);
   return parts.join(" · ");
+}
+
+/** n with thousands separators: 84,317. */
+function num(n: number): string {
+  return n.toLocaleString("en-US");
 }
 
 /** The "Comparing…" text for a progress snapshot. */
 export function progressText(p: Snapshot): string {
-  return `Comparing… ${p.found.toLocaleString("en-US")} files found, ${p.compared.toLocaleString("en-US")} compared`;
+  return `Comparing… ${num(p.found)} files found, ${num(p.compared)} compared`;
 }
 
 function span(cls: string, text: string): HTMLSpanElement {
@@ -289,12 +294,12 @@ function makeFilterBar(f: DirFilter, changed: () => void): FilterBar {
     update(view, f) {
       DIR_CHIPS.forEach((c, i) => {
         const on = c.id === f.chip;
-        chipButtons[i].textContent = `${c.label} ${view.chipCounts.get(c.id) ?? 0}`;
+        chipButtons[i].textContent = `${c.label} ${num(view.chipCounts.get(c.id) ?? 0)}`;
         chipButtons[i].classList.toggle("chip-active", on);
         chipButtons[i].setAttribute("aria-checked", String(on));
       });
       unchanged.l.hidden = view.unchanged === 0;
-      unchanged.text.textContent = `Show unchanged (${view.unchanged.toLocaleString("en-US")})`;
+      unchanged.text.textContent = `Show unchanged (${num(view.unchanged)})`;
     },
   };
 }

@@ -35,6 +35,10 @@ describe("countsText", () => {
     const es = [entry("modified"), entry("added"), entry("deleted"), entry("unchanged"), entry("error")];
     assert.equal(countsText(es), "3 changed · 1 unchanged · 1 error");
   });
+  it("uses thousands separators", () => {
+    const es = Array.from({ length: 1200 }, () => entry("unchanged"));
+    assert.equal(countsText(es), "0 changed · 1,200 unchanged");
+  });
   it("leaves out errors when there are none", () => {
     assert.equal(countsText([entry("modified"), entry("error"), entry("error")]), "1 changed · 0 unchanged · 2 errors");
     assert.equal(countsText([]), "0 changed · 0 unchanged");
