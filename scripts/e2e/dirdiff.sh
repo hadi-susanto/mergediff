@@ -46,4 +46,34 @@ ui key Escape
 finish_app
 check "Esc closes the list: exit 0" test $RC -eq 0
 check "the files' windows closed with it" test "$(wmctrl -l | grep -cF 'mergediff —')" -eq 0
+
+section "git difftool -d"
+# A repository with one modified, one added (staged) and one deleted file.
+# Git copies the changed files of both sides into two temporary
+# directories (the working-tree side as symlinks) and runs the difftool
+# once with them as $LOCAL and $REMOTE.
+REPO=$WORK/repo
+GIT="git -C $REPO -c user.name=e2e -c user.email=e2e@example.invalid -c commit.gpgsign=false"
+git init -q "$REPO"
+printf 'one\ntwo\nthree\n' >"$REPO/a.txt"
+printf 'keep\n' >"$REPO/c.txt"
+printf 'same\n' >"$REPO/same.txt"
+$GIT add . && $GIT commit -q -m base
+printf 'one\n2\nthree\nfour\n' >"$REPO/a.txt"
+printf 'new\n' >"$REPO/b.txt"
+$GIT add b.txt
+rm "$REPO/c.txt"
+timeout "$APP_TIMEOUT" $GIT -c difftool.mergediff.cmd="\"$BIN\" \"\$LOCAL\" \"\$REMOTE\"" \
+  difftool -d --tool=mergediff HEAD >"$WORK/difftool.log" 2>&1 &
+APP_PID=$!
+ui wait find "All changes 3"
+check "git difftool -d opens the list (3 changes)" ui find "Modified 1" find "Added 1" find "Deleted 1"
+focus "$LIST"
+ui key End key Return
+check "opening a file from it works" window_appears "mergediff — c.txt"
+focus "$LIST"
+ui key Escape
+finish_app
+check "closing the list: git difftool exits 0" test $RC -eq 0
+check "no window left" test "$(wmctrl -l | grep -cF 'mergediff —')" -eq 0
 summary

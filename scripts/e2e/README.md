@@ -54,14 +54,22 @@ XWayland is unverified. The app itself is not X11-specific.
 - `scratch.sh` — `mergediff` without arguments: typing into both panes,
   Refresh by F5, Ctrl+Enter and the button, the out-of-date state after an
   edit, Esc not closing, Close exiting 0
+- `dirdiff.sh` — the directory diff on `testdata/dev/dirdiff`: double-click
+  and End + Enter open files in their own windows, a file that cannot be
+  opened says why, Esc closes the list and its windows (exit 0); then
+  `git difftool -d` on a temporary repository (modified, added, deleted)
+  opens the list, a file opens, and Git exits 0 when the list closes
 - `perf.sh` — a 10,000-line merge with ~430 changes: time to interactive,
-  responsiveness right after fast scrolling, typing and "apply all", saving
+  responsiveness right after fast scrolling, typing and "apply all", saving;
+  and a 20,000-file directory diff (500 changed) shown within 3 s of starting
 - `gen-large.py` — generates that merge (`gen-large.py DIR [LINES]`), also
   handy for manual checks
+- `gen-dirs.py` — generates two directory trees for the directory diff
+  (`gen-dirs.py DIR [FILES] [CHANGED]`, default 20,000 and 500)
 - `lib.sh` — shared helpers (`check`, `ui`, `start_app`, …)
 - `ui.py` — the driver: `wait`, `dump`, `click NAME[#N]`, `key COMBO`,
-  `type TEXT`, `scroll X Y N`, `clickat X Y`, `pixel X Y`, `find TEXT`,
-  `samples TITLE SECS`
+  `type TEXT`, `scroll X Y N`, `clickat X Y`, `dblclickin TITLE X Y`,
+  `pixel X Y`, `find TEXT`, `samples TITLE SECS`
 
 The scripts use their own config file (`XDG_CONFIG_HOME` points into a
 temporary directory), so your settings never affect them. `ui.py` refuses
@@ -73,7 +81,8 @@ a step that fails reports `FAIL` instead of leaving a window open.
 
 ## Writing checks
 
-Buttons are found by their accessible name, which is their visible label
+Buttons (and the directory view's filter chips and checkboxes) are found by
+their accessible name, which is their visible label
 (`Save`, `↓ Conflict`) or, for symbol-only buttons, their tooltip
 (`Next change (F7)`, `Ignore this change`). Several buttons can share a
 name; `NAME#N` picks the N-th in page order: toolbar, then the Local→Result
