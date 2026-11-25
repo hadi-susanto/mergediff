@@ -8,9 +8,11 @@ import {
   groupItems,
   matchesText,
   middleEllipsis,
+  scrollToShow,
   Selection,
   sortByPath,
   splitPath,
+  visibleWindow,
   type Chip,
   type GroupItem,
   type ListItem,
@@ -244,5 +246,28 @@ describe("groupItems", () => {
       flatItems(sorted).map((i) => [i.kind, i.row.path, i.group]),
       sorted.map((r) => ["row", r.path, undefined]),
     );
+  });
+});
+
+describe("visibleWindow", () => {
+  it("covers the viewport plus overscan, clamped to the list", () => {
+    assert.deepEqual(visibleWindow(0, 320, 32, 1000, 5), { start: 0, end: 15 });
+    assert.deepEqual(visibleWindow(3200, 320, 32, 1000, 5), { start: 95, end: 115 });
+    assert.deepEqual(visibleWindow(31900, 320, 32, 1000, 5), { start: 991, end: 1000 });
+  });
+  it("partly visible rows count", () => {
+    assert.deepEqual(visibleWindow(16, 32, 32, 100, 0), { start: 0, end: 2 });
+  });
+  it("empty lists and odd input", () => {
+    assert.deepEqual(visibleWindow(0, 320, 32, 0), { start: 0, end: 0 });
+    assert.deepEqual(visibleWindow(-50, 64, 32, 10, 0), { start: 0, end: 2 });
+  });
+});
+
+describe("scrollToShow", () => {
+  it("leaves visible rows alone and scrolls as little as possible", () => {
+    assert.equal(scrollToShow(5, 100, 320, 32), 100);
+    assert.equal(scrollToShow(2, 100, 320, 32), 64); // above: align top
+    assert.equal(scrollToShow(20, 100, 320, 32), 352); // below: align bottom (21*32 - 320)
   });
 });

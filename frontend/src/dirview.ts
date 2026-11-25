@@ -9,7 +9,7 @@ import type {
   StatsBatch,
 } from "../bindings/github.com/hadi-susanto/mergediff/internal/dirdiff/models";
 import { showError } from "./dialogs.ts";
-import { middleEllipsis } from "./filelist-core.ts";
+import { flatItems, middleEllipsis } from "./filelist-core.ts";
 import { FileList, renderPath, type Column } from "./filelist.ts";
 import { installShortcuts } from "./keys.ts";
 
@@ -119,8 +119,8 @@ const COLUMNS: Column<DirRow>[] = [
     key: "file",
     title: "File",
     width: "minmax(0, 1fr)",
-    render(row, cell) {
-      renderPath(cell, row.path);
+    render(row, cell, nameOnly) {
+      renderPath(cell, row.path, nameOnly);
     },
   },
   {
@@ -163,6 +163,8 @@ export function renderDirView(o: DirViewOptions): void {
 
   const list = new FileList<DirRow>({
     columns: COLUMNS,
+    renderGroup: () => {},
+    toggleGroup: () => {},
     blocked: (row) => blockedReason(row.entry, row.stat),
     open: (row) => {
       setHint();
@@ -223,7 +225,7 @@ async function load(o: DirViewOptions, list: FileList<DirRow>, statusRight: HTML
   if (rows.length === 0) {
     list.showMessage(entries.length === 0 ? "Both directories are empty" : "No differences");
   } else {
-    list.setRows(rows);
+    list.setItems(flatItems(rows));
   }
   list.focus();
   await loadStats(o, list, rows);
@@ -231,7 +233,7 @@ async function load(o: DirViewOptions, list: FileList<DirRow>, statusRight: HTML
 
 /** Fills in the line counts as the backend computes them. */
 async function loadStats(o: DirViewOptions, list: FileList<DirRow>, rows: DirRow[]): Promise<void> {
-  const index = new Map(rows.map((r, i) => [r.path, i]));
+  const byPath = new Map(rows.map((r) => [r.path, r]));
   for (;;) {
     let batch: StatsBatch;
     try {
@@ -241,11 +243,10 @@ async function loadStats(o: DirViewOptions, list: FileList<DirRow>, rows: DirRow
       return;
     }
     for (const ps of batch.stats ?? []) {
-      const i = index.get(ps.path);
-      if (i === undefined) continue; // e.g. unchanged rows are not shown
-      rows[i].stat = ps.stat;
-      list.update(i);
+      const row = byPath.get(ps.path);
+      if (row) row.stat = ps.stat;
     }
+    if (batch.stats?.length) list.redraw();
     if (batch.done) return;
     await new Promise((resolve) => setTimeout(resolve, STATS_INTERVAL_MS));
   }

@@ -586,6 +586,59 @@ body {
   user-select: none;
 }
 
+/* Virtual scrolling: the canvas is as tall as all rows; only the rows in
+   view exist, each placed at index × 32px (ROW_HEIGHT in filelist.ts). */
+.fl-canvas {
+  position: relative;
+}
+
+.fl-body .fl-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  min-height: 0;
+}
+
+/* Directory header rows (Group by directory) */
+.fl-group {
+  background: var(--chrome-bg);
+}
+
+.fl-group-cell {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fl-group-chevron {
+  width: 12px;
+  color: var(--chrome-muted);
+}
+
+.fl-group-icon {
+  color: var(--chrome-muted);
+}
+
+.fl-group-label {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  color: var(--editor-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.fl-group .tag {
+  flex: 0 0 auto;
+  font-size: 11px;
+}
+
+.fl-in-group .fl-col-file {
+  padding-left: 36px;
+}
+
 .fl-header {
   min-height: 34px;
   background: var(--chrome-bg);

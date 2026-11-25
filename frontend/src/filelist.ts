@@ -1,9 +1,21 @@
 // Generic file list: a table of rows with configurable columns, path cells,
-// selection, keyboard navigation and "open" handling. It knows nothing about
+// optional directory group headers, selection, keyboard navigation and
+// "open" handling. Only the rows in view are in the DOM (virtual scrolling),
+// so lists of tens of thousands of files stay fast. It knows nothing about
 // what the rows mean; the directory view (dirview.ts) and, later, the
 // conflicts view configure it. The logic lives in filelist-core.ts.
 
-import { Selection, splitPath } from "./filelist-core.ts";
+import {
+  scrollToShow,
+  Selection,
+  splitPath,
+  visibleWindow,
+  type GroupItem,
+  type ListItem,
+} from "./filelist-core.ts";
+
+/** Height of every row in px; must match .fl-body .fl-row in styles.css. */
+export const ROW_HEIGHT = 32;
 
 /** One column of the list. */
 export interface Column<T> {
@@ -14,12 +26,16 @@ export interface Column<T> {
   subtitle?: string;
   /** CSS grid track size, e.g. "48px" or "minmax(0, 1fr)". */
   width: string;
-  /** Fills the cell for a row; called again when the row is updated. */
-  render(row: T, cell: HTMLElement): void;
+  /** Fills the cell for a row. nameOnly: the row is under a directory header. */
+  render(row: T, cell: HTMLElement, nameOnly: boolean): void;
 }
 
 export interface FileListOptions<T extends { path: string }> {
   columns: Column<T>[];
+  /** Fills a directory header row (one cell spanning the columns). */
+  renderGroup(group: GroupItem, cell: HTMLElement): void;
+  /** A header was collapsed or expanded (click, Enter, ←/→). */
+  toggleGroup(dir: string, collapse: boolean): void;
   /** null if the row can be opened, otherwise why not. */
   blocked(row: T): string | null;
   /** Double-click or Enter on a row that can be opened. */
@@ -50,24 +66,31 @@ export function renderPath(cell: HTMLElement, path: string, nameOnly = false): v
   cell.appendChild(n);
 }
 
+/** Identifies an item across setItems calls, to keep the selection. */
+function itemKey<T extends { path: string }>(item: ListItem<T> | undefined): string | undefined {
+  if (!item) return undefined;
+  return item.kind === "group" ? `group:${item.dir}` : `row:${item.row.path}`;
+}
+
 export class FileList<T extends { path: string }> {
   readonly root: HTMLElement;
   private readonly body: HTMLElement;
+  private readonly canvas: HTMLElement;
   private readonly o: FileListOptions<T>;
   private readonly sel: Selection;
-  private rows: T[] = [];
-  private elements: HTMLElement[] = [];
+  private items: ListItem<T>[] = [];
+  private message: HTMLElement | null = null;
+  private frame = 0;
 
   constructor(o: FileListOptions<T>) {
     this.o = o;
     this.sel = new Selection(0, () => true, o.multi ?? false);
-    const template = o.columns.map((c) => c.width).join(" ");
 
     this.root = document.createElement("div");
     this.root.className = "fl";
     this.root.setAttribute("role", "grid");
     this.root.tabIndex = 0;
-    this.root.style.setProperty("--fl-columns", template);
+    this.root.style.setProperty("--fl-columns", o.columns.map((c) => c.width).join(" "));
 
     const header = document.createElement("div");
     header.className = "fl-row fl-header";
@@ -87,111 +110,185 @@ export class FileList<T extends { path: string }> {
     }
     this.body = document.createElement("div");
     this.body.className = "fl-body";
+    this.canvas = document.createElement("div");
+    this.canvas.className = "fl-canvas";
+    this.body.appendChild(this.canvas);
     this.root.append(header, this.body);
 
     this.root.addEventListener("keydown", (e) => this.onKey(e));
+    this.body.addEventListener("scroll", () => this.schedule());
+    new ResizeObserver(() => this.schedule()).observe(this.body);
+    // One set of mouse handlers for all rows: rows come and go while scrolling.
+    this.canvas.addEventListener("mousedown", (e) => this.onMouseDown(e));
+    this.canvas.addEventListener("dblclick", (e) => this.onDoubleClick(e));
   }
 
-  /** Shows rows (in the given order), keeping the selected path if it is still listed. */
-  setRows(rows: T[]): void {
-    const keep = this.current()?.path;
-    this.rows = rows;
-    this.elements = rows.map((row, i) => this.makeRow(row, i));
-    this.body.replaceChildren(...this.elements);
-    const again = keep === undefined ? -1 : rows.findIndex((r) => r.path === keep);
-    this.sel.reset(rows.length, () => true, again);
+  /** Shows items (in the given order), keeping the selected item if it is still listed. */
+  setItems(items: ListItem<T>[]): void {
+    const keep = itemKey(this.items[this.sel.current]);
+    this.items = items;
+    this.message?.remove();
+    this.message = null;
+    const again = keep === undefined ? -1 : items.findIndex((it) => itemKey(it) === keep);
+    this.sel.reset(items.length, () => true, again);
     if (this.sel.current < 0) this.sel.edge(1);
-    this.paintSelection();
+    this.canvas.style.height = `${items.length * ROW_HEIGHT}px`;
+    this.render();
+    this.reveal();
+    this.notify();
   }
 
-  /** Replaces the rows with a message, e.g. "Comparing…" or "No differences". */
+  /** Shows a message instead of rows, e.g. "Comparing…" or "No differences". */
   showMessage(text: string): void {
-    const m = document.createElement("div");
-    m.className = "fl-message";
-    m.setAttribute("role", "status");
-    m.textContent = text;
-    this.rows = [];
-    this.elements = [];
-    this.body.replaceChildren(m);
+    this.items = [];
     this.sel.reset(0);
+    this.canvas.style.height = "0px";
+    this.canvas.replaceChildren();
+    if (!this.message) {
+      this.message = document.createElement("div");
+      this.message.className = "fl-message";
+      this.message.setAttribute("role", "status");
+      this.body.appendChild(this.message);
+    }
+    this.message.textContent = text;
   }
 
-  /** Renders row i's cells again, e.g. after its line counts arrived. */
-  update(i: number): void {
-    const el = this.elements[i];
-    if (!el) return;
-    this.o.columns.forEach((c, k) => c.render(this.rows[i], el.children[k] as HTMLElement));
-    el.classList.toggle("fl-blocked", this.o.blocked(this.rows[i]) !== null);
+  /** Renders the rows in view again, e.g. after line counts arrived. Batched per frame. */
+  redraw(): void {
+    this.schedule();
   }
 
-  /** The rows as shown. */
-  all(): readonly T[] {
-    return this.rows;
+  /** The items as shown. */
+  all(): readonly ListItem<T>[] {
+    return this.items;
   }
 
-  /** The current (keyboard focus) row. */
-  current(): T | undefined {
-    return this.rows[this.sel.current];
+  /** The current (keyboard focus) item. */
+  current(): ListItem<T> | undefined {
+    return this.items[this.sel.current];
   }
 
-  /** The selected rows. */
+  /** The selected file rows (group headers excluded). */
   selectedRows(): T[] {
-    return this.sel.rows().map((i) => this.rows[i]);
+    const out: T[] = [];
+    for (const i of this.sel.rows()) {
+      const it = this.items[i];
+      if (it?.kind === "row") out.push(it.row);
+    }
+    return out;
   }
 
-  /** Selects row i and scrolls it into view. */
+  /** Selects item i and scrolls it into view. */
   select(i: number): boolean {
     if (!this.sel.select(i)) return false;
-    this.paintSelection();
+    this.afterMove();
     return true;
   }
 
-  /** Index of the next (dir 1) or previous (dir -1) row after the current one for which want() holds, or -1. */
+  /** Index of the next (dir 1) or previous (dir -1) file row after the current item for which want() holds, or -1. */
   find(dir: 1 | -1, want: (row: T) => boolean): number {
-    const from = this.sel.current < 0 ? (dir === 1 ? -1 : this.rows.length) : this.sel.current;
-    return this.sel.find(from, dir, (i) => want(this.rows[i]));
+    const from = this.sel.current < 0 ? (dir === 1 ? -1 : this.items.length) : this.sel.current;
+    return this.sel.find(from, dir, (i) => {
+      const it = this.items[i];
+      return it.kind === "row" && want(it.row);
+    });
   }
 
-  /** Opens the current row, or reports why it cannot be opened. */
+  /** Opens the current row, or reports why it cannot be opened; on a header, toggles it. */
   openCurrent(): void {
-    const row = this.current();
-    if (!row) return;
-    const reason = this.o.blocked(row);
-    if (reason === null) this.o.open(row);
-    else this.o.refused(row, reason);
+    const it = this.current();
+    if (!it) return;
+    if (it.kind === "group") {
+      this.o.toggleGroup(it.dir, !it.collapsed);
+      return;
+    }
+    const reason = this.o.blocked(it.row);
+    if (reason === null) this.o.open(it.row);
+    else this.o.refused(it.row, reason);
   }
 
   focus(): void {
     this.root.focus();
   }
 
-  private makeRow(row: T, i: number): HTMLElement {
+  private schedule(): void {
+    if (this.frame) return;
+    this.frame = requestAnimationFrame(() => {
+      this.frame = 0;
+      this.render();
+    });
+  }
+
+  /** Builds the DOM for the items in view. */
+  private render(): void {
+    const { start, end } = visibleWindow(this.body.scrollTop, this.body.clientHeight, ROW_HEIGHT, this.items.length);
+    const els: HTMLElement[] = [];
+    for (let i = start; i < end; i++) els.push(this.makeItem(i));
+    this.canvas.replaceChildren(...els);
+  }
+
+  private makeItem(i: number): HTMLElement {
+    const it = this.items[i];
     const el = document.createElement("div");
     el.className = "fl-row";
     el.setAttribute("role", "row");
+    el.dataset.index = String(i);
+    el.style.transform = `translateY(${i * ROW_HEIGHT}px)`;
+    const selected = this.sel.has(i);
+    el.classList.toggle("fl-selected", selected);
+    el.setAttribute("aria-selected", String(selected));
+    if (it.kind === "group") {
+      el.classList.add("fl-group");
+      el.setAttribute("aria-expanded", String(!it.collapsed));
+      const cell = document.createElement("div");
+      cell.className = "fl-cell fl-group-cell";
+      cell.setAttribute("role", "gridcell");
+      this.o.renderGroup(it, cell);
+      el.appendChild(cell);
+      return el;
+    }
+    const nameOnly = it.group !== undefined;
     for (const c of this.o.columns) {
       const cell = document.createElement("div");
       cell.className = `fl-cell fl-col-${c.key}`;
       cell.setAttribute("role", "gridcell");
-      c.render(row, cell);
+      c.render(it.row, cell, nameOnly);
       el.appendChild(cell);
     }
-    el.classList.toggle("fl-blocked", this.o.blocked(row) !== null);
-    el.addEventListener("mousedown", (e) => {
-      if (e.button !== 0) return;
-      const ok =
-        e.shiftKey ? this.sel.extendTo(i) : e.ctrlKey || e.metaKey ? this.sel.toggle(i) : this.sel.select(i);
-      if (ok) this.paintSelection(false);
-    });
-    el.addEventListener("dblclick", () => {
-      if (this.sel.select(i)) this.paintSelection(false);
-      this.openCurrent();
-    });
+    if (nameOnly) el.classList.add("fl-in-group");
+    el.classList.toggle("fl-blocked", this.o.blocked(it.row) !== null);
     return el;
+  }
+
+  private indexAt(e: MouseEvent): number {
+    const row = (e.target as HTMLElement).closest<HTMLElement>(".fl-row");
+    return row?.dataset.index === undefined ? -1 : Number(row.dataset.index);
+  }
+
+  private onMouseDown(e: MouseEvent): void {
+    if (e.button !== 0) return;
+    const i = this.indexAt(e);
+    if (i < 0) return;
+    const it = this.items[i];
+    if (it.kind === "group") {
+      this.sel.select(i);
+      this.o.toggleGroup(it.dir, !it.collapsed);
+      return;
+    }
+    const ok = e.shiftKey ? this.sel.extendTo(i) : e.ctrlKey || e.metaKey ? this.sel.toggle(i) : this.sel.select(i);
+    if (ok) this.afterMove(false);
+  }
+
+  private onDoubleClick(e: MouseEvent): void {
+    const i = this.indexAt(e);
+    if (i < 0 || this.items[i].kind === "group") return; // a single click already toggled it
+    if (this.sel.select(i)) this.afterMove(false);
+    this.openCurrent();
   }
 
   private onKey(e: KeyboardEvent): void {
     if (e.altKey || e.ctrlKey || e.metaKey) return;
+    const it = this.current();
     let moved = false;
     switch (e.key) {
       case "ArrowDown":
@@ -206,25 +303,40 @@ export class FileList<T extends { path: string }> {
       case "End":
         moved = this.sel.edge(-1);
         break;
+      case "ArrowLeft":
+        // On a header: collapse it. On a row in a group: go to its header.
+        if (it?.kind === "group" && !it.collapsed) this.o.toggleGroup(it.dir, true);
+        else if (it?.kind === "row" && it.group !== undefined) {
+          moved = this.sel.select(this.items.findIndex((x) => x.kind === "group" && x.dir === it.group));
+        }
+        break;
+      case "ArrowRight":
+        if (it?.kind === "group" && it.collapsed) this.o.toggleGroup(it.dir, false);
+        break;
       case "Enter":
-        e.preventDefault();
         this.openCurrent();
-        return;
+        break;
       default:
         return;
     }
     e.preventDefault();
-    if (moved) this.paintSelection();
+    if (moved) this.afterMove();
   }
 
-  private paintSelection(scroll = true): void {
-    this.elements.forEach((el, i) => {
-      const on = this.sel.has(i);
-      el.classList.toggle("fl-selected", on);
-      el.setAttribute("aria-selected", String(on));
-    });
-    const cur = this.elements[this.sel.current];
-    if (scroll && cur) cur.scrollIntoView({ block: "nearest" });
+  /** After the selection moved: repaint, scroll it into view (unless clicked), report it. */
+  private afterMove(scroll = true): void {
+    if (scroll) this.reveal();
+    this.render();
+    this.notify();
+  }
+
+  private reveal(): void {
+    if (this.sel.current < 0) return;
+    const top = scrollToShow(this.sel.current, this.body.scrollTop, this.body.clientHeight, ROW_HEIGHT);
+    if (top !== this.body.scrollTop) this.body.scrollTop = top;
+  }
+
+  private notify(): void {
     this.o.selected?.(this.selectedRows());
   }
 }

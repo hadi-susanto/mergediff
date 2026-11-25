@@ -252,3 +252,36 @@ export function groupItems<T extends { path: string }>(
   }
   return items;
 }
+
+/** Rows [start, end) of a virtually scrolled list worth rendering. */
+export interface RowWindow {
+  start: number;
+  end: number;
+}
+
+/**
+ * The rows of a list of count fixed-height rows that a viewport shows when
+ * scrolled to scrollTop, plus overscan rows on each side so fast scrolling
+ * does not show blanks.
+ */
+export function visibleWindow(
+  scrollTop: number,
+  viewport: number,
+  rowHeight: number,
+  count: number,
+  overscan = 10,
+): RowWindow {
+  if (count === 0 || rowHeight <= 0) return { start: 0, end: 0 };
+  const first = Math.floor(Math.max(0, scrollTop) / rowHeight);
+  const last = Math.ceil((Math.max(0, scrollTop) + Math.max(0, viewport)) / rowHeight);
+  return { start: Math.max(0, first - overscan), end: Math.min(count, last + overscan) };
+}
+
+/** The scrollTop that brings row i fully into view, changing scrollTop as little as possible. */
+export function scrollToShow(i: number, scrollTop: number, viewport: number, rowHeight: number): number {
+  const top = i * rowHeight;
+  const bottom = top + rowHeight;
+  if (top < scrollTop) return top;
+  if (bottom > scrollTop + viewport) return Math.max(0, bottom - viewport);
+  return scrollTop;
+}
