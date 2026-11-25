@@ -7,6 +7,7 @@ import (
 	"github.com/hadi-susanto/mergediff/internal/config"
 	"github.com/hadi-susanto/mergediff/internal/diff"
 	"github.com/hadi-susanto/mergediff/internal/dirdiff"
+	"github.com/hadi-susanto/mergediff/internal/gitconflict"
 	"github.com/hadi-susanto/mergediff/internal/merge"
 	"github.com/hadi-susanto/mergediff/internal/session"
 )
@@ -93,6 +94,21 @@ func (a *App) DirProgress() dirdiff.Snapshot {
 	return a.sess.DirProgress()
 }
 
+// Conflicts re-reads the conflicts of a resolve session.
+func (a *App) Conflicts() (session.ConflictList, error) {
+	return a.sess.Conflicts()
+}
+
+// AcceptSide resolves paths by taking side's version.
+func (a *App) AcceptSide(paths []string, side gitconflict.Side) (session.ConflictList, error) {
+	return a.sess.Accept(paths, side)
+}
+
+// MergeCounts counts a text conflict's conflicts and non-conflicting changes.
+func (a *App) MergeCounts(path string) (session.MergeCounts, error) {
+	return a.sess.MergeCounts(path)
+}
+
 // Save writes the merge result to MERGED with the original line endings.
 func (a *App) Save(result string) error {
 	return a.sess.Save(result)
@@ -152,8 +168,22 @@ func (a *App) Version() string {
 	return Version()
 }
 
+// code is the exit code once the window has closed. A resolve session
+// asks Git: 0 if no conflicts are left within its paths, else 1.
 func (a *App) code() int {
 	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.exitCode
+	code := a.exitCode
+	a.mu.Unlock()
+	if a.sess.Mode != session.Resolve || code == exitError {
+		return code
+	}
+	n, err := a.sess.Remaining()
+	switch {
+	case err != nil:
+		return exitError
+	case n > 0:
+		return exitCancel
+	default:
+		return exitOK
+	}
 }

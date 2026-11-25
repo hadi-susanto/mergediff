@@ -54,9 +54,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return exitOK
 	case cmdSettings:
 		return runSettings(opts.settingsArgs, stdout, stderr)
-	case cmdResolve:
-		fmt.Fprintln(stderr, "mergediff: resolve is not implemented yet")
-		return exitError
 	}
 
 	var sess *session.Session
@@ -76,6 +73,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 	case cmdScratch:
 		sess = session.NewScratch()
+	case cmdResolve:
+		var cwd string
+		if cwd, err = os.Getwd(); err == nil {
+			sess, err = session.StartResolve(cwd, opts.paths, opts.autoApply)
+		}
+		if errors.Is(err, session.ErrNoConflicts) {
+			fmt.Fprintf(stdout, "mergediff: %v\n", err)
+			return exitOK
+		}
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "mergediff: %v\n", err)

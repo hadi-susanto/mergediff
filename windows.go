@@ -10,6 +10,7 @@ import (
 
 	"github.com/hadi-susanto/mergediff/internal/diff"
 	"github.com/hadi-susanto/mergediff/internal/dirdiff"
+	"github.com/hadi-susanto/mergediff/internal/gitconflict"
 	"github.com/hadi-susanto/mergediff/internal/merge"
 	"github.com/hadi-susanto/mergediff/internal/session"
 )
@@ -153,6 +154,26 @@ func (w *Windows) openEntry(parent string, app *App, path string) error {
 	return w.openChild(parent, key, sess)
 }
 
+// mergeKey is the child-window key of a conflicted file's merge window.
+func mergeKey(path string) string { return "merge:" + path }
+
+// errMergeOpen is returned when accepting a file whose merge window is open.
+var errMergeOpen = errors.New("its merge window is open; save or cancel it first")
+
+// acceptSide resolves paths from window parent's resolve session, unless
+// one of them is open in a merge window.
+func (w *Windows) acceptSide(parent string, app *App, paths []string, side gitconflict.Side) (session.ConflictList, error) {
+	w.mu.Lock()
+	for _, p := range paths {
+		if w.childLocked(parent, mergeKey(p)) != nil {
+			w.mu.Unlock()
+			return session.ConflictList{}, fmt.Errorf("%s: %w", p, errMergeOpen)
+		}
+	}
+	w.mu.Unlock()
+	return app.AcceptSide(paths, side)
+}
+
 // create makes the window for the registered entry name.
 func (w *Windows) create(name string, app *App) windowHandle {
 	h := w.newWindow(name, app.sess, app)
@@ -289,6 +310,36 @@ func (w *Windows) OpenEntry(ctx context.Context, path string) error {
 		return err
 	}
 	return w.openEntry(name, app, path)
+}
+
+// Conflicts re-reads the calling window's conflicts (mergediff resolve).
+func (w *Windows) Conflicts(ctx context.Context) (session.ConflictList, error) {
+	app, err := w.caller(ctx)
+	if err != nil {
+		return session.ConflictList{}, err
+	}
+	return app.Conflicts()
+}
+
+// AcceptSide resolves the calling window's conflicts at paths by taking
+// side ("yours" or "theirs"), and returns the refreshed list. Files open in
+// a merge window are refused.
+func (w *Windows) AcceptSide(ctx context.Context, paths []string, side gitconflict.Side) (session.ConflictList, error) {
+	name, app, err := w.callerName(ctx)
+	if err != nil {
+		return session.ConflictList{}, err
+	}
+	return w.acceptSide(name, app, paths, side)
+}
+
+// MergeCounts counts the conflicts and non-conflicting changes of a text
+// conflict of the calling window, for its side panel.
+func (w *Windows) MergeCounts(ctx context.Context, path string) (session.MergeCounts, error) {
+	app, err := w.caller(ctx)
+	if err != nil {
+		return session.MergeCounts{}, err
+	}
+	return app.MergeCounts(path)
 }
 
 // Save writes the calling window's merge result.
