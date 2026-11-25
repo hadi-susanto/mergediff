@@ -3,7 +3,51 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as gitconflict$0 from "../gitconflict/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as merge$0 from "../merge/models.js";
+
+/**
+ * ConflictList is the Conflicts window's content.
+ */
+export interface ConflictList {
+    "operation": gitconflict$0.Operation;
+    "rows": ConflictRow[] | null;
+
+    /**
+     * Unresolved counts the rows not yet resolved.
+     */
+    "unresolved": number;
+}
+
+/**
+ * ConflictRow is one file of the Conflicts window.
+ */
+export interface ConflictRow {
+    /**
+     * Path is relative to the repository's top level, "/" separators.
+     */
+    "path": string;
+    "yours": gitconflict$0.Status;
+    "theirs": gitconflict$0.Status;
+    "kind": gitconflict$0.Kind;
+    "state": gitconflict$0.State;
+
+    /**
+     * Resolved: no longer unmerged. Yours, Theirs, Kind and State then keep
+     * what they were while the file was conflicted.
+     */
+    "resolved": boolean;
+}
+
+/**
+ * MergeCounts describes a text conflict's merge, for the side panel.
+ */
+export interface MergeCounts {
+    "conflicts": number;
+    "nonConflicting": number;
+}
 
 /**
  * Mode is the kind of session.
@@ -27,6 +71,11 @@ export enum Mode {
      * DirDiff lists the files that differ between two directories.
      */
     DirDiff = "dirdiff",
+
+    /**
+     * Resolve lists a Git working tree's merge conflicts (mergediff resolve).
+     */
+    Resolve = "resolve",
 };
 
 /**
@@ -40,7 +89,7 @@ export interface Session {
     "mode": Mode;
 
     /**
-     * merge: BASE, LOCAL, REMOTE, MERGED; diff, dirdiff: LEFT, RIGHT
+     * merge: BASE, LOCAL, REMOTE, MERGED; diff, dirdiff: LEFT, RIGHT; resolve: the repository's top level
      */
     "paths": string[] | null;
 

@@ -24,10 +24,22 @@ import * as diff$0 from "./internal/diff/models.js";
 import * as dirdiff$0 from "./internal/dirdiff/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as gitconflict$0 from "./internal/gitconflict/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as merge$0 from "./internal/merge/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as session$0 from "./internal/session/models.js";
+
+/**
+ * AcceptSide resolves the calling window's conflicts at paths by taking
+ * side ("yours" or "theirs"), and returns the refreshed list. Files open in
+ * a merge window are refused.
+ */
+export function AcceptSide(paths: string[] | null, side: gitconflict$0.Side): $CancellablePromise<session$0.ConflictList> {
+    return $Call.ByID(3651067012, paths, side);
+}
 
 /**
  * CharDiff returns character-level differences between two texts.
@@ -48,6 +60,13 @@ export function CloseRequestSeen(): $CancellablePromise<void> {
  */
 export function Compare(left: string, right: string): $CancellablePromise<merge$0.Chunk[] | null> {
     return $Call.ByID(2292572938, left, right);
+}
+
+/**
+ * Conflicts re-reads the calling window's conflicts (mergediff resolve).
+ */
+export function Conflicts(): $CancellablePromise<session$0.ConflictList> {
+    return $Call.ByID(378483990);
 }
 
 /**
@@ -85,6 +104,14 @@ export function GuardClose(on: boolean): $CancellablePromise<void> {
  */
 export function LoadSession(): $CancellablePromise<session$0.Session> {
     return $Call.ByID(3519499525);
+}
+
+/**
+ * MergeCounts counts the conflicts and non-conflicting changes of a text
+ * conflict of the calling window, for its side panel.
+ */
+export function MergeCounts(path: string): $CancellablePromise<session$0.MergeCounts> {
+    return $Call.ByID(928220953, path);
 }
 
 /**
