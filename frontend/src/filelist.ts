@@ -68,6 +68,24 @@ export function renderPath(cell: HTMLElement, path: string, nameOnly = false): v
   cell.appendChild(n);
 }
 
+const FOLDER_SVG =
+  '<svg width="14" height="12" viewBox="0 0 14 12" aria-hidden="true"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3l1.5 1.5h4.5A1.5 1.5 0 0 1 13 4v5.5A1.5 1.5 0 0 1 11.5 11h-9A1.5 1.5 0 0 1 1 9.5z" fill="none" stroke="currentColor"/></svg>';
+
+/** The start of a directory header: ▾/▸, a folder icon and the directory (full path in a tooltip). */
+export function groupHeader(g: GroupItem): HTMLElement[] {
+  const chevron = document.createElement("span");
+  chevron.className = "fl-group-chevron";
+  chevron.textContent = g.collapsed ? "▸" : "▾";
+  const icon = document.createElement("span");
+  icon.className = "fl-group-icon";
+  icon.innerHTML = FOLDER_SVG;
+  const label = document.createElement("span");
+  label.className = "fl-group-label";
+  label.textContent = g.label;
+  label.title = g.dir || g.label;
+  return [chevron, icon, label];
+}
+
 /** How close two presses on the same row must be to count as a double-click. */
 export const DOUBLE_CLICK_MS = 500;
 

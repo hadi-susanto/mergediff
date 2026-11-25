@@ -7,6 +7,8 @@ export interface Shortcuts {
   cancel?(): void; // Esc
   refresh?(): void; // F5, Ctrl/Cmd+Enter
   find?(): void; // Ctrl/Cmd+F
+  acceptYours?(): void; // Ctrl/Cmd+Shift+Y
+  acceptTheirs?(): void; // Ctrl/Cmd+Shift+T
 }
 
 /**
@@ -25,6 +27,8 @@ export function installShortcuts(s: Shortcuts): void {
       if (mod && !e.shiftKey && !e.altKey && key === "s") action = s.save;
       else if (mod && e.shiftKey && !e.altKey && key === "a") action = s.applyAll;
       else if (mod && !e.shiftKey && !e.altKey && key === "f") action = s.find;
+      else if (mod && e.shiftKey && !e.altKey && key === "y") action = s.acceptYours;
+      else if (mod && e.shiftKey && !e.altKey && key === "t") action = s.acceptTheirs;
       else if (!mod && !e.altKey && key === "F7") action = e.shiftKey ? s.prev : s.next;
       else if (!mod && !e.shiftKey && !e.altKey && key === "Escape") action = s.cancel;
       else if (!e.shiftKey && !e.altKey && ((!mod && key === "F5") || (mod && key === "Enter"))) action = s.refresh;

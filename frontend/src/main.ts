@@ -1,10 +1,12 @@
 import { Events, Window } from "@wailsio/runtime";
 import * as Backend from "../bindings/github.com/hadi-susanto/mergediff/windows";
+import type { Side } from "../bindings/github.com/hadi-susanto/mergediff/internal/gitconflict/models";
 import { Mode, type Session } from "../bindings/github.com/hadi-susanto/mergediff/internal/session/models";
 import { showError } from "./dialogs.ts";
 import { renderDiffView, type DiffPaneSpec } from "./diffview.ts";
 import { renderDirView } from "./dirview.ts";
 import { renderMerge, type Rendered } from "./merge.ts";
+import { renderResolveView } from "./resolveview.ts";
 import type { CharSpan, MergeChunk } from "./model.ts";
 import { setLanguage } from "./panes.ts";
 import { installTheme, themeFromURL } from "./theme.ts";
@@ -89,6 +91,19 @@ async function main(): Promise<void> {
         progress: () => Backend.DirProgress(),
         stats: () => Backend.DirStats(),
         open: (path) => Backend.OpenEntry(path),
+        quit,
+      },
+    });
+    return;
+  }
+  if (session.mode === Mode.Resolve) {
+    renderResolveView({
+      repo: session.paths?.[0] ?? "",
+      version,
+      backend: {
+        conflicts: () => Backend.Conflicts(),
+        accept: (paths, side) => Backend.AcceptSide(paths, side as Side),
+        counts: (path) => Backend.MergeCounts(path),
         quit,
       },
     });

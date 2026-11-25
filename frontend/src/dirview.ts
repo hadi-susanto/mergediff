@@ -19,7 +19,7 @@ import {
   type GroupItem,
   type ListItem,
 } from "./filelist-core.ts";
-import { FileList, renderPath, type Column } from "./filelist.ts";
+import { FileList, groupHeader, renderPath, type Column } from "./filelist.ts";
 import { makeFilterBar, num } from "./filterbar.ts";
 import { installShortcuts } from "./keys.ts";
 
@@ -213,17 +213,8 @@ export function groupTags(counts: ReadonlyMap<string, number>): { status: string
   return out;
 }
 
-const FOLDER_SVG =
-  '<svg width="14" height="12" viewBox="0 0 14 12" aria-hidden="true"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3l1.5 1.5h4.5A1.5 1.5 0 0 1 13 4v5.5A1.5 1.5 0 0 1 11.5 11h-9A1.5 1.5 0 0 1 1 9.5z" fill="none" stroke="currentColor"/></svg>';
-
 function renderGroup(g: GroupItem, cell: HTMLElement): void {
-  const chevron = span("fl-group-chevron", g.collapsed ? "▸" : "▾");
-  const icon = document.createElement("span");
-  icon.className = "fl-group-icon";
-  icon.innerHTML = FOLDER_SVG;
-  const label = span("fl-group-label", g.label);
-  label.title = g.dir || g.label;
-  cell.replaceChildren(chevron, icon, label, ...groupTags(g.counts).map((t) => span(`tag st-${t.status}`, t.text)));
+  cell.replaceChildren(...groupHeader(g), ...groupTags(g.counts).map((t) => span(`tag st-${t.status}`, t.text)));
 }
 
 /** The filter bar: text filter, chips, Show unchanged and Group by directory. */
