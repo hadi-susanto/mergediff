@@ -758,3 +758,67 @@ body {
   font-weight: 500;
 }
 
+
+/* Filter bar (directory view) */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--editor-bg);
+  border-bottom: 1px solid var(--chrome-border);
+  flex-wrap: wrap;
+}
+
+.filter-input {
+  font: inherit;
+  width: 280px;
+  max-width: 100%;
+  padding: 5px 10px;
+  border: 1px solid var(--btn-border);
+  border-radius: 6px;
+  background: var(--editor-bg);
+  color: var(--editor-fg);
+}
+
+.filter-input:focus {
+  outline: 2px solid var(--modified-strong);
+  outline-offset: -1px;
+}
+
+.chips {
+  display: flex;
+  gap: 6px;
+}
+
+.chip {
+  font: inherit;
+  padding: 4px 12px;
+  border: 1px solid var(--btn-border);
+  border-radius: 999px;
+  background: var(--btn-bg);
+  color: var(--chrome-fg);
+  cursor: pointer;
+}
+
+.chip-active {
+  background: var(--btn-primary-bg);
+  border-color: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
+}
+
+.filter-spacer {
+  flex: 1;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--chrome-fg);
+  white-space: nowrap;
+}
+
+.check[hidden] {
+  display: none;
+}

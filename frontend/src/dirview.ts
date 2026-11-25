@@ -9,7 +9,16 @@ import type {
   StatsBatch,
 } from "../bindings/github.com/hadi-susanto/mergediff/internal/dirdiff/models";
 import { showError } from "./dialogs.ts";
-import { flatItems, middleEllipsis } from "./filelist-core.ts";
+import {
+  chipCounts,
+  filterRows,
+  flatItems,
+  groupItems,
+  middleEllipsis,
+  type Chip,
+  type GroupItem,
+  type ListItem,
+} from "./filelist-core.ts";
 import { FileList, renderPath, type Column } from "./filelist.ts";
 import { installShortcuts } from "./keys.ts";
 
@@ -151,6 +160,145 @@ const COLUMNS: Column<DirRow>[] = [
   },
 ];
 
+/** The filter chips of the directory view. "All changes" keeps every row shown. */
+export const DIR_CHIPS: Chip<DirRow>[] = [
+  { id: "all", label: "All changes", keep: () => true },
+  { id: "modified", label: "Modified", keep: (r) => r.entry.status === "modified" },
+  { id: "added", label: "Added", keep: (r) => r.entry.status === "added" },
+  { id: "deleted", label: "Deleted", keep: (r) => r.entry.status === "deleted" },
+];
+
+/** What the filter bar is set to. */
+export interface DirFilter {
+  text: string;
+  chip: string;
+  showUnchanged: boolean;
+  grouped: boolean;
+  /** Collapsed group directories (Group by directory). */
+  collapsed: ReadonlySet<string>;
+}
+
+/** What the list shows for a filter, and the counts the filter bar shows. */
+export interface DirView {
+  items: ListItem<DirRow>[];
+  /** Rows each chip keeps, after the text filter. */
+  chipCounts: Map<string, number>;
+  /** Unchanged files in the comparison (for "Show unchanged (N)"). */
+  unchanged: number;
+}
+
+/**
+ * Applies the filter bar to the rows (sorted by path): unchanged files only
+ * with Show unchanged, then the text filter, then the chip, then grouping.
+ */
+export function dirItems(rows: readonly DirRow[], f: DirFilter): DirView {
+  let unchanged = 0;
+  for (const r of rows) if (r.entry.status === "unchanged") unchanged++;
+  const base = f.showUnchanged ? rows : rows.filter((r) => r.entry.status !== "unchanged");
+  const matched = filterRows(base, f.text);
+  const chip = DIR_CHIPS.find((c) => c.id === f.chip) ?? DIR_CHIPS[0];
+  const shown = matched.filter((r) => chip.keep(r));
+  const items = f.grouped ? groupItems(shown, (r) => r.entry.status, f.collapsed) : flatItems(shown);
+  return { items, chipCounts: chipCounts(matched, DIR_CHIPS), unchanged };
+}
+
+/** Status tags on a directory header, e.g. "1 modified", "2 added". */
+export function groupTags(counts: ReadonlyMap<string, number>): { status: string; text: string }[] {
+  const out: { status: string; text: string }[] = [];
+  for (const status of ["modified", "added", "deleted", "error", "unchanged"]) {
+    const n = counts.get(status) ?? 0;
+    if (n > 0) out.push({ status, text: `${n} ${status === "error" ? (n === 1 ? "error" : "errors") : status}` });
+  }
+  return out;
+}
+
+const FOLDER_SVG =
+  '<svg width="14" height="12" viewBox="0 0 14 12" aria-hidden="true"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3l1.5 1.5h4.5A1.5 1.5 0 0 1 13 4v5.5A1.5 1.5 0 0 1 11.5 11h-9A1.5 1.5 0 0 1 1 9.5z" fill="none" stroke="currentColor"/></svg>';
+
+function renderGroup(g: GroupItem, cell: HTMLElement): void {
+  const chevron = span("fl-group-chevron", g.collapsed ? "▸" : "▾");
+  const icon = document.createElement("span");
+  icon.className = "fl-group-icon";
+  icon.innerHTML = FOLDER_SVG;
+  const label = span("fl-group-label", g.label);
+  label.title = g.dir || g.label;
+  cell.replaceChildren(chevron, icon, label, ...groupTags(g.counts).map((t) => span(`tag st-${t.status}`, t.text)));
+}
+
+/** The filter bar: text filter, chips, Show unchanged and Group by directory. */
+interface FilterBar {
+  root: HTMLElement;
+  input: HTMLInputElement;
+  /** Updates the chip counts, the active chip and the Show unchanged label. */
+  update(view: DirView, f: DirFilter): void;
+}
+
+function makeFilterBar(f: DirFilter, changed: () => void): FilterBar {
+  const root = document.createElement("div");
+  root.className = "filter-bar";
+
+  const input = document.createElement("input");
+  input.type = "search";
+  input.className = "filter-input";
+  input.placeholder = "Filter files…";
+  input.setAttribute("aria-label", "Filter files");
+  input.addEventListener("input", () => {
+    f.text = input.value;
+    changed();
+  });
+
+  const chips = document.createElement("div");
+  chips.className = "chips";
+  chips.setAttribute("role", "radiogroup");
+  const chipButtons = DIR_CHIPS.map((c) => {
+    const b = document.createElement("button");
+    b.className = "chip";
+    b.setAttribute("role", "radio");
+    b.addEventListener("click", () => {
+      f.chip = c.id;
+      changed();
+    });
+    chips.appendChild(b);
+    return b;
+  });
+
+  const checkbox = (label: string, on: boolean, set: (v: boolean) => void) => {
+    const l = document.createElement("label");
+    l.className = "check";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = on;
+    box.addEventListener("change", () => {
+      set(box.checked);
+      changed();
+    });
+    const text = span("", label);
+    l.append(box, text);
+    return { l, text };
+  };
+  const unchanged = checkbox("Show unchanged", f.showUnchanged, (v) => (f.showUnchanged = v));
+  const grouped = checkbox("Group by directory", f.grouped, (v) => (f.grouped = v));
+
+  const spacer = document.createElement("div");
+  spacer.className = "filter-spacer";
+  root.append(input, chips, spacer, unchanged.l, grouped.l);
+
+  return {
+    root,
+    input,
+    update(view, f) {
+      DIR_CHIPS.forEach((c, i) => {
+        const on = c.id === f.chip;
+        chipButtons[i].textContent = `${c.label} ${view.chipCounts.get(c.id) ?? 0}`;
+        chipButtons[i].classList.toggle("chip-active", on);
+        chipButtons[i].setAttribute("aria-checked", String(on));
+      });
+      unchanged.l.hidden = view.unchanged === 0;
+      unchanged.text.textContent = `Show unchanged (${view.unchanged.toLocaleString("en-US")})`;
+    },
+  };
+}
+
 /** Builds the directory window into the page (index.html's toolbar, panes and status bar). */
 export function renderDirView(o: DirViewOptions): void {
   const statusLeft = document.getElementById("status-left")!;
@@ -161,10 +309,30 @@ export function renderDirView(o: DirViewOptions): void {
 
   renderPathBar(document.getElementById("toolbar-left")!, o.left, o.right);
 
+  // Filter state lives for this window only (no setting).
+  const filter: DirFilter = { text: "", chip: "all", showUnchanged: false, grouped: false, collapsed: new Set() };
+  let rows: DirRow[] | null = null; // null until the comparison is done
+
+  const show = () => {
+    if (!rows) return;
+    const view = dirItems(rows, filter);
+    bar.update(view, filter);
+    if (view.items.length > 0) list.setItems(view.items);
+    else if (rows.length === 0) list.showMessage("Both directories are empty");
+    else if (filter.text || filter.chip !== "all") list.showMessage("No files match the filter");
+    else list.showMessage("No differences");
+  };
+
   const list = new FileList<DirRow>({
     columns: COLUMNS,
-    renderGroup: () => {},
-    toggleGroup: () => {},
+    renderGroup,
+    toggleGroup(dir, collapse) {
+      const c = new Set(filter.collapsed);
+      if (collapse) c.add(dir);
+      else c.delete(dir);
+      filter.collapsed = c;
+      show();
+    },
     blocked: (row) => blockedReason(row.entry, row.stat),
     open: (row) => {
       setHint();
@@ -173,9 +341,17 @@ export function renderDirView(o: DirViewOptions): void {
     refused: (row, reason) => setHint(`${row.path} cannot be opened: ${reason}`),
     selected: () => setHint(),
   });
+  const bar = makeFilterBar(filter, show);
+  bar.input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "Enter") {
+      e.preventDefault();
+      list.focus();
+    }
+  });
+
   const panes = document.getElementById("panes")!;
   panes.classList.add("panes-dir");
-  panes.appendChild(list.root);
+  panes.append(bar.root, list.root);
 
   // Next / previous file that can be opened, then open it.
   const step = (dir: 1 | -1) => {
@@ -185,14 +361,37 @@ export function renderDirView(o: DirViewOptions): void {
   installShortcuts({
     next: () => step(1),
     prev: () => step(-1),
-    cancel: () => o.backend.quit(EXIT_OK),
+    find: () => {
+      bar.input.focus();
+      bar.input.select();
+    },
+    // Esc clears the filter first; with an empty filter it closes the window.
+    cancel: () => {
+      if (filter.text) {
+        bar.input.value = "";
+        filter.text = "";
+        show();
+        list.focus();
+      } else {
+        o.backend.quit(EXIT_OK);
+      }
+    },
   });
 
-  void load(o, list, statusRight);
+  void load(o, list, statusRight, (loaded) => {
+    rows = loaded;
+    show();
+    list.focus();
+  });
 }
 
-/** Waits for the comparison, showing progress if it takes a while, then shows the list. */
-async function load(o: DirViewOptions, list: FileList<DirRow>, statusRight: HTMLElement): Promise<void> {
+/** Waits for the comparison, showing progress if it takes a while, then hands over the rows and loads the line counts. */
+async function load(
+  o: DirViewOptions,
+  list: FileList<DirRow>,
+  statusRight: HTMLElement,
+  loaded: (rows: DirRow[]) => void,
+): Promise<void> {
   let polling: number | undefined;
   const poll = () => {
     o.backend
@@ -221,13 +420,8 @@ async function load(o: DirViewOptions, list: FileList<DirRow>, statusRight: HTML
   }
 
   statusRight.textContent = `${countsText(entries)} · mergediff ${o.version}`;
-  const rows = entries.filter((e) => e.status !== "unchanged").map((entry) => ({ path: entry.path, entry }));
-  if (rows.length === 0) {
-    list.showMessage(entries.length === 0 ? "Both directories are empty" : "No differences");
-  } else {
-    list.setItems(flatItems(rows));
-  }
-  list.focus();
+  const rows = entries.map((entry) => ({ path: entry.path, entry }));
+  loaded(rows);
   await loadStats(o, list, rows);
 }
 

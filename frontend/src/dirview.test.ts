@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Entry, Stat } from "../bindings/github.com/hadi-susanto/mergediff/internal/dirdiff/models";
-import { blockedReason, countsText, linesCell, progressText } from "./dirview.ts";
+import {
+  blockedReason,
+  countsText,
+  dirItems,
+  groupTags,
+  linesCell,
+  progressText,
+  type DirFilter,
+  type DirView,
+} from "./dirview.ts";
 
 function entry(status: string, more: Partial<Entry> = {}): Entry {
   return { path: "p", status, left: "", right: "", leftSize: 0, rightSize: 0, note: "", ...more } as Entry;
@@ -73,5 +82,68 @@ describe("linesCell", () => {
     assert.deepEqual(linesCell(entry("modified"), stat({ added: 2 })), { added: 2, deleted: undefined });
     assert.deepEqual(linesCell(entry("modified"), stat({ deleted: 2 })), { added: undefined, deleted: 2 });
     assert.deepEqual(linesCell(entry("modified"), stat({})), { added: 0, deleted: 0 });
+  });
+});
+
+describe("dirItems", () => {
+  const rows = [
+    { path: "a/x.txt", entry: entry("modified", { path: "a/x.txt" }) },
+    { path: "a/y.txt", entry: entry("unchanged", { path: "a/y.txt" }) },
+    { path: "b/new.ts", entry: entry("added", { path: "b/new.ts" }) },
+    { path: "gone.md", entry: entry("deleted", { path: "gone.md" }) },
+    { path: "z/bad", entry: entry("error", { path: "z/bad", note: "permission denied" }) },
+  ];
+  const filter = (more: Partial<DirFilter> = {}): DirFilter => ({
+    text: "",
+    chip: "all",
+    showUnchanged: false,
+    grouped: false,
+    collapsed: new Set(),
+    ...more,
+  });
+  const paths = (v: DirView) => v.items.map((i) => (i.kind === "group" ? `[${i.label}]` : i.row.path));
+
+  it("hides unchanged files unless asked, and counts them", () => {
+    const v = dirItems(rows, filter());
+    assert.deepEqual(paths(v), ["a/x.txt", "b/new.ts", "gone.md", "z/bad"]);
+    assert.equal(v.unchanged, 1);
+    assert.deepEqual(paths(dirItems(rows, filter({ showUnchanged: true }))), ["a/x.txt", "a/y.txt", "b/new.ts", "gone.md", "z/bad"]);
+  });
+
+  it("chips keep one status; counts follow the text filter", () => {
+    assert.deepEqual(paths(dirItems(rows, filter({ chip: "added" }))), ["b/new.ts"]);
+    const v = dirItems(rows, filter({ text: "A/" }));
+    assert.deepEqual(paths(v), ["a/x.txt"]);
+    assert.deepEqual([...v.chipCounts], [["all", 1], ["modified", 1], ["added", 0], ["deleted", 0]]);
+    assert.deepEqual([...dirItems(rows, filter()).chipCounts], [["all", 4], ["modified", 1], ["added", 1], ["deleted", 1]]);
+  });
+
+  it("groups by directory with the root first", () => {
+    assert.deepEqual(paths(dirItems(rows, filter({ grouped: true }))), [
+      "[(root)]",
+      "gone.md",
+      "[a/]",
+      "a/x.txt",
+      "[b/]",
+      "b/new.ts",
+      "[z/]",
+      "z/bad",
+    ]);
+    assert.deepEqual(paths(dirItems(rows, filter({ grouped: true, collapsed: new Set(["a/"]), chip: "modified" }))), ["[a/]"]);
+  });
+
+  it("an unknown chip falls back to all", () => {
+    assert.equal(dirItems(rows, filter({ chip: "nope" })).items.length, 4);
+  });
+});
+
+describe("groupTags", () => {
+  it("lists the non-zero counts in a fixed order", () => {
+    const counts = new Map([["added", 2], ["modified", 1], ["error", 1], ["deleted", 0]]);
+    assert.deepEqual(groupTags(counts), [
+      { status: "modified", text: "1 modified" },
+      { status: "added", text: "2 added" },
+      { status: "error", text: "1 error" },
+    ]);
   });
 });
