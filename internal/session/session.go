@@ -39,7 +39,7 @@ var ErrNotMerge = errors.New("not a merge session")
 // Base ranges equal their Local ranges.
 type Session struct {
 	Mode  Mode     `json:"mode"`
-	Paths []string `json:"paths"` // merge: BASE, LOCAL, REMOTE, MERGED; diff, dirdiff: LEFT, RIGHT
+	Paths []string `json:"paths"` // merge: BASE, LOCAL, REMOTE, MERGED; diff, dirdiff: LEFT, RIGHT; resolve: the repository's top level
 	// Title names the file being merged or compared, for the window title.
 	Title         string        `json:"title"`
 	Base          string        `json:"base"`
@@ -55,7 +55,8 @@ type Session struct {
 
 	eol    textio.EOL
 	output string
-	dir    *dirCompare // dirdiff only
+	dir    *dirCompare   // dirdiff only
+	res    *resolveState // resolve only
 }
 
 // LoadDiff loads LEFT and RIGHT for a read-only two-way diff.
