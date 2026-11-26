@@ -1,4 +1,4 @@
-import { Events, Window } from "@wailsio/runtime";
+import { Clipboard, Events, Window } from "@wailsio/runtime";
 import * as Backend from "../bindings/github.com/hadi-susanto/mergediff/windows";
 import type { Side } from "../bindings/github.com/hadi-susanto/mergediff/internal/gitconflict/models";
 import { Mode, type Session } from "../bindings/github.com/hadi-susanto/mergediff/internal/session/models";
@@ -17,6 +17,8 @@ import "./styles.css";
  * used; the window's name follows (closeRequestedEvent in main.go).
  */
 const CLOSE_REQUESTED = "mergediff:close-requested:";
+/** Prefix of the event telling a Conflicts window to refresh (windows.go). */
+const CONFLICTS_CHANGED = "mergediff:conflicts-changed:";
 
 /** Process exit codes, mirroring cli.go. */
 const EXIT_OK = 0;
@@ -37,8 +39,29 @@ function baseName(path: string): string {
  * A diff pane for a file. An empty path is a file missing on that side
  * (opened from a directory comparison): empty text titled "(missing)".
  */
-function paneSpec(path: string, text: string): DiffPaneSpec {
+function paneSpec(path: string, text: string, label = ""): DiffPaneSpec {
+  if (label) return { title: label, tooltip: path, text };
   return path ? { title: baseName(path), tooltip: path, text } : { title: "(missing)", tooltip: "", text: "" };
+}
+
+/**
+ * Calls handler when the backend emits event + this window's name
+ * (per-window events: every window receives every event).
+ */
+function onWindowEvent(event: string, handler: () => void): Promise<void> {
+  return Window.Name().then((name) => {
+    Events.On(event + name, handler);
+  });
+}
+
+/** Routes this window's close button to handler (the backend's close guard). */
+function guardClose(handler: () => void): void {
+  onWindowEvent(CLOSE_REQUESTED, () => {
+    Backend.CloseRequestSeen().catch((err) => console.error("acknowledging close failed", err));
+    handler();
+  })
+    .then(() => Backend.GuardClose(true))
+    .catch((err) => console.error("guarding close failed", err));
 }
 
 function quit(code: number): void {
@@ -104,6 +127,14 @@ async function main(): Promise<void> {
         conflicts: () => Backend.Conflicts(),
         accept: (paths, side) => Backend.AcceptSide(paths, side as Side),
         counts: (path) => Backend.MergeCounts(path),
+        openMerge: (path) => Backend.OpenMerge(path),
+        showChanges: (path) => Backend.ShowChanges(path),
+        unsavedMerges: () => Backend.UnsavedMerges().then((p) => p ?? []),
+        copy: (text) => Clipboard.SetText(text),
+        onChanged: (handler) => {
+          onWindowEvent(CONFLICTS_CHANGED, handler).catch((err) => console.error("listening for changes failed", err));
+        },
+        guardClose,
         quit,
       },
     });
@@ -114,8 +145,8 @@ async function main(): Promise<void> {
     const scratch = session.mode === Mode.Scratch;
     const [leftPath = "", rightPath = ""] = session.paths ?? [];
     rendered = renderDiffView({
-      left: scratch ? { title: "Left", tooltip: "", text: "" } : paneSpec(leftPath, session.local),
-      right: scratch ? { title: "Right", tooltip: "", text: "" } : paneSpec(rightPath, session.remote),
+      left: scratch ? { title: "Left", tooltip: "", text: "" } : paneSpec(leftPath, session.local, session.localLabel),
+      right: scratch ? { title: "Right", tooltip: "", text: "" } : paneSpec(rightPath, session.remote, session.remoteLabel),
       chunks: chunksOf(session),
       compare: scratch ? (l, r) => Backend.Compare(l, r).then((c) => (c ?? []) as unknown as MergeChunk[]) : undefined,
       charDiff,
@@ -132,21 +163,16 @@ async function main(): Promise<void> {
         chunks: chunksOf(session),
         initialResult: session.initialResult,
         autoApplied: session.autoApplied,
+        localLabel: session.localLabel,
+        remoteLabel: session.remoteLabel,
       },
       {
         save: (result) => Backend.Save(result),
         quit,
         charDiff,
-        guardClose(handler) {
-          Window.Name()
-            .then((name) => {
-              Events.On(CLOSE_REQUESTED + name, () => {
-                Backend.CloseRequestSeen().catch((err) => console.error("acknowledging close failed", err));
-                handler();
-              });
-              return Backend.GuardClose(true);
-            })
-            .catch((err) => console.error("guarding close failed", err));
+        guardClose,
+        setDirty: (dirty) => {
+          Backend.SetDirty(dirty).catch((err) => console.error("reporting edits failed", err));
         },
       },
     );

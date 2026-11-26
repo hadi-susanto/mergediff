@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe as suite, it } from "node:test";
 import {
   actionsFor,
+  banner,
+  canShowChanges,
   confirmText,
   describe,
   groupSummary,
@@ -10,6 +12,7 @@ import {
   resolveItems,
   stateText,
   statusText,
+  unsavedText,
   type ConflictRow,
   type ResolveFilter,
 } from "./resolve-core.ts";
@@ -114,8 +117,11 @@ suite("actionsFor", () => {
     assert.equal(a.theirs.enabled, true);
     assert.equal(a.yours.title, "Accept Yours (Ctrl+Shift+Y)");
   });
-  it("Merge… can be switched off as a whole", () => {
-    assert.equal(actionsFor([row("a")], none, false).merge.enabled, false);
+  it("Merge… on a locked row focuses its window", () => {
+    const a = actionsFor([row("a")], new Set(["a"]));
+    assert.equal(a.merge.enabled, true);
+    assert.equal(a.merge.title, "Show its open merge window (Enter)");
+    assert.equal(a.yours.enabled, false);
   });
   it("modify/delete names the buttons by what they do", () => {
     const a = actionsFor([row("a", { theirs: "deleted", state: "modifyDelete" })], none);
@@ -157,5 +163,33 @@ suite("actionsFor", () => {
     assert.equal(mergeBlocked(row("a")), null);
     assert.equal(mergeBlocked(row("a", { state: "binary", kind: "notUTF8" })), "it is not valid UTF-8 text");
     assert.equal(mergeBlocked(row("a", { resolved: true })), "already resolved");
+  });
+});
+
+suite("Show changes, banner, unsaved", () => {
+  it("Show changes only for one unresolved modify/delete text file", () => {
+    assert.equal(canShowChanges([row("a", { theirs: "deleted", state: "modifyDelete" })]), true);
+    assert.equal(canShowChanges([row("a", { yours: "deleted", theirs: "added", state: "modifyDelete" })]), true);
+    assert.equal(canShowChanges([row("a", { yours: "deleted", theirs: "deleted", state: "modifyDelete" })]), false);
+    assert.equal(canShowChanges([row("a", { theirs: "deleted", state: "modifyDelete", kind: "binary" })]), false);
+    assert.equal(canShowChanges([row("a", { theirs: "deleted", state: "modifyDelete", resolved: true })]), false);
+    assert.equal(canShowChanges([row("a")]), false);
+    assert.equal(canShowChanges([row("a", { theirs: "deleted", state: "modifyDelete" }), row("b")]), false);
+  });
+  it("the banner appears once everything is resolved", () => {
+    assert.equal(banner(1, 9, "git merge --continue"), null);
+    assert.equal(banner(0, 0, "git commit"), null);
+    assert.deepEqual(banner(0, 9, "git merge --continue"), {
+      text: "All conflicts resolved. Next, run:",
+      command: "git merge --continue",
+    });
+    assert.equal(banner(0, 1, "")?.command, "git commit");
+  });
+  it("unsaved merges are named", () => {
+    assert.match(unsavedText(["a.txt"]), /^The merge of a\.txt has unsaved edits/);
+    assert.match(unsavedText(["a", "b"]), /2 files .*all of them/s);
+  });
+  it("a locked row says so", () => {
+    assert.match(describe([row("a")], undefined, new Set(["a"])), /Open in a merge window/);
   });
 });

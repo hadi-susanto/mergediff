@@ -158,10 +158,9 @@ function sideLabel(status: string, side: Side): string {
 
 /**
  * Which actions the selection allows. locked holds the paths open in a
- * merge window (they cannot be accepted until it closes); mergeEnabled is
- * false while Merge… is not available at all.
+ * merge window (they cannot be accepted until it closes).
  */
-export function actionsFor(selected: readonly ConflictRow[], locked: ReadonlySet<string>, mergeEnabled = true): Actions {
+export function actionsFor(selected: readonly ConflictRow[], locked: ReadonlySet<string>): Actions {
   const targets = selected.filter((r) => !r.resolved && r.state !== "submodule");
   const lockedOnes = targets.filter((r) => locked.has(r.path));
   const one = selected.length === 1 ? selected[0] : undefined;
@@ -187,13 +186,14 @@ export function actionsFor(selected: readonly ConflictRow[], locked: ReadonlySet
   });
 
   let merge: ActionState = { enabled: false, label: "Merge…", title: "Select a file" };
-  if (!mergeEnabled) merge = { enabled: false, label: "Merge…", title: "Not available yet" };
-  else if (selected.length > 1) merge = { enabled: false, label: "Merge…", title: "Select one file to merge" };
+  if (selected.length > 1) merge = { enabled: false, label: "Merge…", title: "Select one file to merge" };
   else if (one) {
     const reason = mergeBlocked(one);
-    merge = reason === null
-      ? { enabled: true, label: "Merge…", title: "Open the 3-way merge (Enter)" }
-      : { enabled: false, label: "Merge…", title: `Cannot merge: ${reason}` };
+    merge = reason !== null
+      ? { enabled: false, label: "Merge…", title: `Cannot merge: ${reason}` }
+      : locked.has(one.path)
+        ? { enabled: true, label: "Merge…", title: "Show its open merge window (Enter)" }
+        : { enabled: true, label: "Merge…", title: "Open the 3-way merge (Enter)" };
   }
   return {
     merge,
@@ -203,9 +203,34 @@ export function actionsFor(selected: readonly ConflictRow[], locked: ReadonlySet
   };
 }
 
+/**
+ * Whether "Show changes" applies to the selection: one unresolved
+ * modify/delete text file that one side kept.
+ */
+export function canShowChanges(selected: readonly ConflictRow[]): boolean {
+  if (selected.length !== 1) return false;
+  const r = selected[0];
+  return !r.resolved && r.state === "modifyDelete" && r.kind === "text" && (r.yours !== "deleted" || r.theirs !== "deleted");
+}
+
+/** The all-resolved banner, or null while conflicts remain or the list is empty. */
+export function banner(unresolved: number, total: number, next: string): { text: string; command: string } | null {
+  if (unresolved > 0 || total === 0) return null;
+  return { text: "All conflicts resolved. Next, run:", command: next || "git commit" };
+}
+
+/** The question before closing with merge windows that have unsaved edits. */
+export function unsavedText(paths: readonly string[]): string {
+  const which = paths.length === 1 ? paths[0] : plural(paths.length, "file");
+  return `The merge of ${which} has unsaved edits.\n\nClose anyway and discard ${paths.length === 1 ? "them" : "all of them"}?`;
+}
+
 /** The side panel's one-line description of the selection. */
-export function describe(selected: readonly ConflictRow[], counts?: MergeCounts): string {
+export function describe(selected: readonly ConflictRow[], counts?: MergeCounts, locked?: ReadonlySet<string>): string {
   if (selected.length === 0) return "No file selected.";
+  if (selected.length === 1 && !selected[0].resolved && locked?.has(selected[0].path)) {
+    return "Open in a merge window. Save or cancel it to accept a side here.";
+  }
   if (selected.length > 1) {
     const open = selected.filter((r) => !r.resolved).length;
     return `${plural(selected.length, "file")} selected, ${open} unresolved.`;

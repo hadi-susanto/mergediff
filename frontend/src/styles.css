@@ -848,12 +848,64 @@ body {
 .panes-resolve {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 260px;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   background: var(--editor-bg);
 }
 
-.panes-resolve .filter-bar {
+/* Filter bar and banner span the width; the list and side panel share the last row. */
+.panes-resolve > * {
+  grid-row: 3;
+}
+
+.panes-resolve > .filter-bar {
+  grid-row: 1;
   grid-column: 1 / -1;
+}
+
+.panes-resolve > .resolve-banner {
+  grid-row: 2;
+  grid-column: 1 / -1;
+}
+
+.resolve-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--chrome-border);
+  background: var(--added-bg);
+  color: var(--added-fg);
+}
+
+.resolve-banner[hidden] {
+  display: none;
+}
+
+.resolve-banner-cmd {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--editor-bg);
+  color: var(--chrome-fg);
+  user-select: all;
+}
+
+.link-btn {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--modified-fg);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-btn[hidden] {
+  display: none;
+}
+
+.fl-row.fl-locked .fl-cell {
+  font-style: italic;
 }
 
 .resolve-side {

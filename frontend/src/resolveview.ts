@@ -13,6 +13,8 @@ import { makeFilterBar } from "./filterbar.ts";
 import { installShortcuts } from "./keys.ts";
 import {
   actionsFor,
+  banner,
+  canShowChanges,
   confirmText,
   describe,
   groupSummary,
@@ -26,6 +28,7 @@ import {
   type ConflictRow,
   type ResolveFilter,
   type Side,
+  unsavedText,
 } from "./resolve-core.ts";
 
 /** The rows and operation the backend reports (session.ConflictList). */
@@ -33,6 +36,8 @@ export interface ConflictListData {
   operation: Operation;
   rows: ConflictRow[] | null;
   unresolved: number;
+  /** Paths open in merge windows. */
+  open: string[] | null;
 }
 
 /** What the conflicts view needs from the backend and the window. */
@@ -40,6 +45,15 @@ export interface ResolveBackend {
   conflicts(): Promise<ConflictListData>;
   accept(paths: string[], side: Side): Promise<ConflictListData>;
   counts(path: string): Promise<MergeCounts>;
+  openMerge(path: string): Promise<void>;
+  showChanges(path: string): Promise<void>;
+  /** Files open in merge windows with unsaved edits. */
+  unsavedMerges(): Promise<string[]>;
+  copy(text: string): Promise<void>;
+  /** Calls handler when a merge window opens or closes. */
+  onChanged(handler: () => void): void;
+  /** Routes the window's close button to handler. */
+  guardClose(handler: () => void): void;
   quit(code: number): void;
 }
 
@@ -53,8 +67,6 @@ export interface ResolveViewOptions {
 const EXIT_OK = 0;
 const EXIT_ERROR = 2;
 const HINT = "Double-click or Enter to merge · Ctrl+Shift+Y yours · Ctrl+Shift+T theirs";
-/** Merge… is wired in a later phase; until then it stays disabled. */
-const MERGE_AVAILABLE = false;
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -133,7 +145,7 @@ export function renderResolveView(o: ResolveViewOptions): void {
   const filter: ResolveFilter = { text: "", chip: "all", grouped: false, collapsed: new Set() };
   let rows: ConflictRow[] = [];
   /** Paths open in a merge window: they cannot be accepted. */
-  const locked = new Set<string>();
+  let locked = new Set<string>();
   /** Conflict counts by path, for the description; cleared on every refresh. */
   let counts = new Map<string, MergeCounts>();
   let list: FileList<ConflictRow> | null = null;
@@ -148,14 +160,26 @@ export function renderResolveView(o: ResolveViewOptions): void {
   const selPath = el("div", "resolve-selected-path mono");
   const desc = el("div", "resolve-desc");
   desc.setAttribute("role", "status");
+  const changesBtn = el("button", "link-btn", "Show changes");
+  changesBtn.title = "Compare base with the side that kept the file";
   const closeBtn = el("button", "btn resolve-btn", "Close");
-  side.append(mergeBtn, yoursBtn, theirsBtn, selLabel, selPath, desc, el("div", "resolve-spacer"), closeBtn);
+  side.append(mergeBtn, yoursBtn, theirsBtn, selLabel, selPath, desc, changesBtn, el("div", "resolve-spacer"), closeBtn);
+
+  // All-resolved banner: the command that finishes the operation.
+  const bannerEl = el("div", "resolve-banner");
+  bannerEl.setAttribute("role", "status");
+  const bannerText = el("span", "resolve-banner-text");
+  const bannerCmd = el("code", "resolve-banner-cmd mono");
+  const copyBtn = el("button", "btn", "Copy");
+  copyBtn.title = "Copy the command";
+  bannerEl.append(bannerText, bannerCmd, copyBtn);
+  bannerEl.hidden = true;
 
   const selected = (): ConflictRow[] => list?.selectedRows() ?? [];
 
   const updatePanel = () => {
     const sel = selected();
-    const a = actionsFor(sel, locked, MERGE_AVAILABLE);
+    const a = actionsFor(sel, locked);
     for (const [btn, st] of [
       [mergeBtn, a.merge],
       [yoursBtn, a.yours],
@@ -168,7 +192,8 @@ export function renderResolveView(o: ResolveViewOptions): void {
     selLabel.hidden = sel.length !== 1;
     selPath.textContent = sel.length === 1 ? sel[0].path : "";
     const one = sel.length === 1 ? sel[0] : undefined;
-    desc.textContent = describe(sel, one ? counts.get(one.path) : undefined);
+    desc.textContent = describe(sel, one ? counts.get(one.path) : undefined, locked);
+    changesBtn.hidden = !canShowChanges(sel);
     if (one && !one.resolved && one.state === "conflict" && !counts.has(one.path)) {
       const path = one.path;
       o.backend
@@ -176,7 +201,7 @@ export function renderResolveView(o: ResolveViewOptions): void {
         .then((n) => {
           counts.set(path, n);
           const now = selected();
-          if (now.length === 1 && now[0].path === path) desc.textContent = describe(now, n);
+          if (now.length === 1 && now[0].path === path) desc.textContent = describe(now, n, locked);
         })
         .catch((err) => console.error("counting conflicts failed", err));
     }
@@ -193,8 +218,15 @@ export function renderResolveView(o: ResolveViewOptions): void {
 
   const apply = (data: ConflictListData) => {
     rows = data.rows ?? [];
+    locked = new Set(data.open ?? []);
     counts = new Map();
     renderOperation(opHost, pill, data.operation, data.unresolved, rows.length);
+    const b = banner(data.unresolved, rows.length, data.operation.next);
+    bannerEl.hidden = b === null;
+    if (b) {
+      bannerText.textContent = b.text;
+      bannerCmd.textContent = b.command;
+    }
     if (!list) list = makeList(data.operation);
     show();
   };
@@ -210,15 +242,21 @@ export function renderResolveView(o: ResolveViewOptions): void {
         filter.collapsed = c;
         show();
       },
-      blocked: (row) => (MERGE_AVAILABLE ? mergeBlocked(row) : "merging is not available yet"),
-      open: () => setHint(),
+      blocked: mergeBlocked,
+      open: (row) => {
+        setHint();
+        o.backend.openMerge(row.path).catch((err) => {
+          showError(`Could not open ${row.path}: ${err}`);
+          refresh();
+        });
+      },
       refused: (row, reason) => setHint(`${row.path} cannot be merged: ${reason}`),
       selected: () => {
         setHint();
         updatePanel();
       },
       multi: true,
-      rowClass: (row) => (row.resolved ? "fl-faded" : ""),
+      rowClass: (row) => (row.resolved ? "fl-faded" : locked.has(row.path) ? "fl-locked" : ""),
     });
     panes.insertBefore(l.root, side);
     return l;
@@ -232,7 +270,7 @@ export function renderResolveView(o: ResolveViewOptions): void {
   };
 
   const accept = async (s: Side) => {
-    const a = actionsFor(selected(), locked, MERGE_AVAILABLE);
+    const a = actionsFor(selected(), locked);
     const st = s === "yours" ? a.yours : a.theirs;
     if (busy || !st.enabled) return;
     const paths = a.targets.map((r) => r.path);
@@ -257,7 +295,35 @@ export function renderResolveView(o: ResolveViewOptions): void {
   yoursBtn.addEventListener("click", () => void accept("yours"));
   theirsBtn.addEventListener("click", () => void accept("theirs"));
   mergeBtn.addEventListener("click", () => list?.openCurrent());
-  closeBtn.addEventListener("click", () => o.backend.quit(EXIT_OK));
+  changesBtn.addEventListener("click", () => {
+    const sel = selected();
+    if (!canShowChanges(sel)) return;
+    o.backend.showChanges(sel[0].path).catch((err) => showError(`Could not show the changes of ${sel[0].path}: ${err}`));
+  });
+  copyBtn.addEventListener("click", () => {
+    o.backend
+      .copy(bannerCmd.textContent ?? "")
+      .then(() => setHint(`Copied: ${bannerCmd.textContent}`))
+      .catch((err) => showError(`Could not copy: ${err}`));
+  });
+
+  /** Closes the window, asking first when merge windows have unsaved edits. */
+  let closing = false;
+  const close = async () => {
+    if (closing || document.querySelector("dialog[open]")) return;
+    closing = true;
+    try {
+      const unsaved = await o.backend.unsavedMerges().catch(() => [] as string[]);
+      if (unsaved.length > 0 && !(await confirmDialog(unsavedText(unsaved), "Close", "Keep open"))) {
+        list?.focus();
+        return;
+      }
+      o.backend.quit(EXIT_OK);
+    } finally {
+      closing = false;
+    }
+  };
+  closeBtn.addEventListener("click", () => void close());
 
   const bar = makeFilterBar(filter, RESOLVE_CHIPS, show);
   bar.input.addEventListener("keydown", (e) => {
@@ -269,7 +335,7 @@ export function renderResolveView(o: ResolveViewOptions): void {
 
   const panes = document.getElementById("panes")!;
   panes.classList.add("panes-resolve");
-  panes.append(bar.root, side);
+  panes.append(bar.root, bannerEl, side);
 
   installShortcuts({
     acceptYours: () => void accept("yours"),
@@ -287,10 +353,12 @@ export function renderResolveView(o: ResolveViewOptions): void {
         show();
         list?.focus();
       } else {
-        o.backend.quit(EXIT_OK);
+        void close();
       }
     },
   });
+  o.backend.onChanged(refresh);
+  o.backend.guardClose(() => void close());
 
   o.backend
     .conflicts()
