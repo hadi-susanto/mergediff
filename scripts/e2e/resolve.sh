@@ -19,6 +19,10 @@ row_y() { echo $((125 + 32 * $1 + 16)); }
 BANNER=frontend/public/images/checkout-banner@2x.png
 CALC=src/main/java/com/example/shop/checkout/legacy/LegacyCartCalculator.java
 REGISTRY=src/main/java/com/example/shop/payment/gateway/internal/PaymentGatewayRegistry.java
+SQL=src/main/resources/db/migration/V42__add_checkout_session_table.sql
+STRIPE=src/main/java/com/example/shop/payment/gateway/internal/StripePaymentGatewayAdapter.java
+CALC_TEST=src/test/java/com/example/shop/checkout/legacy/LegacyCartCalculatorTest.java
+MERGE="mergediff — $STRIPE"
 
 REPO=$WORK/shop-api
 "$ROOT/scripts/dev/conflict-repo.sh" "$REPO" >/dev/null
@@ -33,7 +37,7 @@ status_is() { [ "$($G status --porcelain=v1 -- "$1" 2>/dev/null | cut -c1-2)" = 
 same_as() { $G show "$2:$1" | cmp -s - "$REPO/$1"; }
 
 section "the Conflicts window"
-(cd "$REPO" && exec timeout "$APP_TIMEOUT" "$BIN" resolve) >"$WORK/app.log" 2>&1 &
+(cd "$REPO" && exec timeout 240 "$BIN" resolve) >"$WORK/app.log" 2>&1 &
 APP_PID=$!
 ui wait find "9 of 9 files unresolved"
 check "window titled after the repository" test "$(wmctrl -l | grep -cF "$LIST · shop-api")" -eq 1
@@ -65,7 +69,7 @@ check "config resolved too" bash -c "! git -C '$REPO' diff --name-only --diff-fi
 
 # Modify/delete: the buttons say what they do.
 focus "$LIST"
-ui clickin "$LIST" 300 "$(row_y 4)"
+ui clickin "$LIST" 300 "$(row_y 4)" find "theirs deleted it"
 check "modify/delete buttons are named by their effect" has "Keep modified (yours)"
 check "and the other side deletes" has "Delete (theirs)"
 ui click "Delete (theirs)"
@@ -88,6 +92,81 @@ ui clickin "$LIST" 300 "$(row_y 7)"
 check "a click in the grouped list selects that row" ui find "Both sides changed this file."
 check "keyboard accept works on it (Ctrl+Shift+T)" bash -c "$UI key ctrl+shift+t find '3 of 9 files unresolved' 2>/dev/null"
 
+ui click "Group by directory" # back to the flat list: rows as numbered above
+
+section "Show changes, edits since Git stopped"
+focus "$LIST"
+ui clickin "$LIST" 300 "$(row_y 8)" find "Yours deleted this file"
+check "modify/delete offers Show changes" has "Show changes"
+ui click "Show changes"
+check "Show changes opens a diff window" ui sleep 1 find "Base"
+check "titled after the file" test "$(wmctrl -l | grep -cF "$CALC_TEST · changes")" -eq 1
+wmctrl -c "$CALC_TEST · changes"
+sleep 0.5
+
+printf -- '-- edited by hand\n' >>"$REPO/$SQL"
+focus "$LIST"
+ui clickin "$LIST" 300 "$(row_y 7)"
+check "a file edited since Git stopped is flagged" ui find "Edited since Git stopped"
+ui click "Accept Theirs"
+check "accepting it asks first, even for one file" ui find "This file was edited since Git stopped"
+ui click "Cancel"
+check "Cancel leaves it conflicted" unmerged "$SQL"
+check "and keeps the edit" grep -q "edited by hand" "$REPO/$SQL"
+
+section "Merge… in a window of its own"
+focus "$LIST"
+ui dblclickin "$LIST" 300 "$(row_y 6)"
+check "double-click opens the merge window" ui sleep 1 find "Local (yours) · feature/checkout"
+check "pane headers name both branches" ui find "Remote (theirs) · origin/main"
+check "one merge window" test "$(wmctrl -l | grep -cF "$MERGE")" -eq 1
+focus "$LIST"
+ui clickin "$LIST" 300 "$(row_y 6)"
+check "its row says it is open" ui find "Open in a merge window"
+check "and cannot be accepted meanwhile" test "$(state 'Accept Yours')" = disabled
+ui dblclickin "$LIST" 300 "$(row_y 6)"
+check "opening it again focuses it (still one window)" bash -c "sleep 1; test \$(wmctrl -l | grep -cF '$MERGE') -eq 1"
+
+focus "$MERGE"
+ui clickin "$MERGE" 700 700 type "x"
+focus "$LIST"
+ui click "Close"
+check "closing with an unsaved merge asks first" ui find "has unsaved edits"
+ui click "Keep open"
+check "Keep open keeps both windows" test "$(wmctrl -l | grep -cF "mergediff —")" -eq 2
+
+focus "$MERGE"
+ui key ctrl+z click "Apply this change to the result" sleep 0.3
+ui click "Save"
+ui sleep 0.5 click "Save anyway" # one conflict is left unresolved in the result
+check "Save closes the merge window" bash -c "sleep 1; ! wmctrl -l | grep -qF '$MERGE'"
+check "the list refreshes: 2 of 9 left" ui find "2 of 9 files unresolved"
+check "saved and staged (git add)" bash -c "! git -C '$REPO' diff --name-only --diff-filter=U | grep -qF '$STRIPE'"
+check "the saved file has no conflict markers" bash -c "! grep -q '^<<<<<<<' '$REPO/$STRIPE'"
+
+section "all resolved"
+focus "$LIST"
+ui clickin "$LIST" 300 "$(row_y 7)"
+ui click "Accept Theirs" find "This file was edited" click "Accept Theirs" # the dialog's button
+check "accepting replaces the hand edit" same_as "$SQL" origin/main
+ui clickin "$LIST" 300 "$(row_y 8)" find "Yours deleted this file"
+ui click "Keep modified (theirs)"
+check "the pill turns green" ui find "All conflicts resolved"
+check "the banner names the next command" ui find "git merge --continue"
+ui click "Copy"
+check "Copy copies it" ui find "Copied: git merge --continue"
+check "mergediff does not run it (still merging)" test -f "$REPO/.git/MERGE_HEAD"
+wmctrl -c "$LIST"
+finish_app
+check "closed by the window button, all resolved: exit 0" test $RC -eq 0
+
+section "closing with conflicts left"
+REPO2=$WORK/shop-api-2
+"$ROOT/scripts/dev/conflict-repo.sh" "$REPO2" >/dev/null
+(cd "$REPO2" && exec timeout "$APP_TIMEOUT" "$BIN" resolve) >"$WORK/app2.log" 2>&1 &
+APP_PID=$!
+ui wait find "9 of 9 files unresolved"
+focus "$LIST"
 ui click "Close"
 finish_app
 check "closed with conflicts left: exit 1" test $RC -eq 1

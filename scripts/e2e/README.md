@@ -63,8 +63,14 @@ XWayland is unverified. The app itself is not X11-specific.
   (`scripts/dev/conflict-repo.sh`): rows selected by real clicks (also in
   the grouped list), Accept Theirs on a binary file (bytes checked), Ctrl+click
   multi-select and its confirmation, modify/delete buttons (`git rm`), F5
-  after resolving in a terminal, Ctrl+Shift+T, exit 1 with conflicts left,
-  exit 2 outside a repository, "no conflicts" with exit 0
+  after resolving in a terminal, Ctrl+Shift+T; Show changes opens a diff
+  window; a file edited since Git stopped is flagged and accepting it asks
+  first; double-click opens the merge window (branch names in its headers,
+  row locked, a second double-click focuses it), closing the list with an
+  unsaved merge asks, Save stages the file and refreshes the list; the
+  all-resolved banner and Copy; exit 0 from the window's close button when
+  all are resolved, exit 1 with conflicts left, exit 2 outside a
+  repository, "no conflicts" with exit 0
 - `perf.sh` — a 10,000-line merge with ~430 changes: time to interactive,
   responsiveness right after fast scrolling, typing and "apply all", saving;
   and a 20,000-file directory diff (500 changed) shown within 3 s of starting
