@@ -56,6 +56,8 @@ export interface MergeInput {
   /** Branch names for the side pane headers; empty: the file names. */
   localLabel?: string;
   remoteLabel?: string;
+  /** The output file was edited since Git stopped: saving asks first. */
+  editedOnDisk?: boolean;
 }
 
 /** Process exit codes, mirroring cli.go. */
@@ -169,6 +171,14 @@ export function renderMerge(input: MergeInput, backend: MergeBackend): Rendered 
     change: (dir) => goTo("change", dir),
     conflict: (dir) => goTo("conflict", dir),
     async save() {
+      if (input.editedOnDisk) {
+        const ok = await confirmDialog(
+          "This file was edited since Git stopped.\n\nSave the result and replace those edits?",
+          "Save",
+          "Keep editing",
+        );
+        if (!ok) return;
+      }
       const left = conflictsLeft(result.view.state.field(chunkField));
       if (left > 0) {
         const ok = await confirmDialog(

@@ -889,6 +889,18 @@ body {
   user-select: all;
 }
 
+.resolve-warning {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--conflict-bg);
+  color: var(--conflict-fg);
+  line-height: 1.4;
+}
+
+.resolve-warning[hidden] {
+  display: none;
+}
+
 .link-btn {
   align-self: flex-start;
   padding: 0;

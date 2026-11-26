@@ -127,6 +127,7 @@ async function main(): Promise<void> {
         conflicts: () => Backend.Conflicts(),
         accept: (paths, side) => Backend.AcceptSide(paths, side as Side),
         counts: (path) => Backend.MergeCounts(path),
+        edited: (paths) => Backend.Edited(paths).then((p) => p ?? []),
         openMerge: (path) => Backend.OpenMerge(path),
         showChanges: (path) => Backend.ShowChanges(path),
         unsavedMerges: () => Backend.UnsavedMerges().then((p) => p ?? []),
@@ -165,6 +166,7 @@ async function main(): Promise<void> {
         autoApplied: session.autoApplied,
         localLabel: session.localLabel,
         remoteLabel: session.remoteLabel,
+        editedOnDisk: session.editedOnDisk,
       },
       {
         save: (result) => Backend.Save(result),

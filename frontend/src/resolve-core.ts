@@ -259,7 +259,19 @@ export function describe(selected: readonly ConflictRow[], counts?: MergeCounts,
   return "";
 }
 
-/** The confirmation before accepting several files. */
-export function confirmText(n: number, side: Side): string {
-  return `Accept ${side === "yours" ? "Yours" : "Theirs"} for ${plural(n, "file")}?`;
+/** The side panel's warning for a file edited since Git stopped. */
+export const EDITED_NOTE = "Edited since Git stopped: accepting a side or saving a merge replaces your changes in the file.";
+
+/**
+ * The confirmation before accepting, or null when none is needed: one
+ * file that was not edited by hand. edited counts the edited targets.
+ */
+export function confirmText(n: number, side: Side, edited = 0): string | null {
+  const name = side === "yours" ? "Yours" : "Theirs";
+  if (n <= 1 && edited === 0) return null;
+  if (n <= 1) return `This file was edited since Git stopped.\n\nAccept ${name} and replace those edits?`;
+  const question = `Accept ${name} for ${plural(n, "file")}?`;
+  if (edited === 0) return question;
+  const which = edited === 1 ? "1 of them was" : `${edited} of them were`;
+  return `${question}\n\n${which} edited since Git stopped; those edits will be replaced.`;
 }

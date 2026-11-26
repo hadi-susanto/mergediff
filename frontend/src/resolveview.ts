@@ -17,6 +17,7 @@ import {
   canShowChanges,
   confirmText,
   describe,
+  EDITED_NOTE,
   groupSummary,
   mergeBlocked,
   pillText,
@@ -45,6 +46,8 @@ export interface ResolveBackend {
   conflicts(): Promise<ConflictListData>;
   accept(paths: string[], side: Side): Promise<ConflictListData>;
   counts(path: string): Promise<MergeCounts>;
+  /** Those of paths edited since Git stopped. */
+  edited(paths: string[]): Promise<string[]>;
   openMerge(path: string): Promise<void>;
   showChanges(path: string): Promise<void>;
   /** Files open in merge windows with unsaved edits. */
@@ -148,6 +151,8 @@ export function renderResolveView(o: ResolveViewOptions): void {
   let locked = new Set<string>();
   /** Conflict counts by path, for the description; cleared on every refresh. */
   let counts = new Map<string, MergeCounts>();
+  /** Whether a path was edited since Git stopped, by path; cleared on every refresh. */
+  let edited = new Map<string, boolean>();
   let list: FileList<ConflictRow> | null = null;
   let busy = false;
 
@@ -160,10 +165,13 @@ export function renderResolveView(o: ResolveViewOptions): void {
   const selPath = el("div", "resolve-selected-path mono");
   const desc = el("div", "resolve-desc");
   desc.setAttribute("role", "status");
+  const warn = el("div", "resolve-warning", EDITED_NOTE);
+  warn.setAttribute("role", "alert");
+  warn.hidden = true;
   const changesBtn = el("button", "link-btn", "Show changes");
   changesBtn.title = "Compare base with the side that kept the file";
   const closeBtn = el("button", "btn resolve-btn", "Close");
-  side.append(mergeBtn, yoursBtn, theirsBtn, selLabel, selPath, desc, changesBtn, el("div", "resolve-spacer"), closeBtn);
+  side.append(mergeBtn, yoursBtn, theirsBtn, selLabel, selPath, desc, warn, changesBtn, el("div", "resolve-spacer"), closeBtn);
 
   // All-resolved banner: the command that finishes the operation.
   const bannerEl = el("div", "resolve-banner");
@@ -194,6 +202,18 @@ export function renderResolveView(o: ResolveViewOptions): void {
     const one = sel.length === 1 ? sel[0] : undefined;
     desc.textContent = describe(sel, one ? counts.get(one.path) : undefined, locked);
     changesBtn.hidden = !canShowChanges(sel);
+    warn.hidden = !(one && !one.resolved && edited.get(one.path));
+    if (one && !one.resolved && one.state !== "submodule" && !edited.has(one.path)) {
+      const path = one.path;
+      o.backend
+        .edited([path])
+        .then((e) => {
+          edited.set(path, e.includes(path));
+          const now = selected();
+          if (now.length === 1 && now[0].path === path) warn.hidden = !edited.get(path);
+        })
+        .catch((err) => console.error("checking for edits failed", err));
+    }
     if (one && !one.resolved && one.state === "conflict" && !counts.has(one.path)) {
       const path = one.path;
       o.backend
@@ -220,6 +240,7 @@ export function renderResolveView(o: ResolveViewOptions): void {
     rows = data.rows ?? [];
     locked = new Set(data.open ?? []);
     counts = new Map();
+    edited = new Map();
     renderOperation(opHost, pill, data.operation, data.unresolved, rows.length);
     const b = banner(data.unresolved, rows.length, data.operation.next);
     bannerEl.hidden = b === null;
@@ -274,13 +295,15 @@ export function renderResolveView(o: ResolveViewOptions): void {
     const st = s === "yours" ? a.yours : a.theirs;
     if (busy || !st.enabled) return;
     const paths = a.targets.map((r) => r.path);
-    if (paths.length > 1 && !(await confirmDialog(confirmText(paths.length, s), st.label, "Cancel"))) {
-      list?.focus();
-      return;
-    }
     busy = true;
     updatePanel();
     try {
+      const touched = await o.backend.edited(paths).catch((err) => {
+        console.error("checking for edits failed", err);
+        return [] as string[];
+      });
+      const question = confirmText(paths.length, s, touched.length);
+      if (question !== null && !(await confirmDialog(question, st.label, "Cancel"))) return;
       apply(await o.backend.accept(paths, s));
     } catch (err) {
       showError(`Could not resolve ${paths.length === 1 ? paths[0] : `${paths.length} files`}: ${err}`);

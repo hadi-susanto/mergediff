@@ -102,6 +102,12 @@ suite("texts", () => {
     assert.equal(confirmText(3, "theirs"), "Accept Theirs for 3 files?");
     assert.equal(confirmText(2, "yours"), "Accept Yours for 2 files?");
   });
+  it("one untouched file needs no confirmation; edited files are named", () => {
+    assert.equal(confirmText(1, "yours"), null);
+    assert.match(confirmText(1, "theirs", 1) ?? "", /^This file was edited since Git stopped\.\n\nAccept Theirs/);
+    assert.match(confirmText(3, "yours", 1) ?? "", /^Accept Yours for 3 files\?\n\n1 of them was edited/);
+    assert.match(confirmText(3, "yours", 2) ?? "", /2 of them were edited/);
+  });
 });
 
 suite("actionsFor", () => {
