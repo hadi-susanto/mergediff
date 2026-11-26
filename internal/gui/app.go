@@ -1,4 +1,4 @@
-package main
+package gui
 
 import (
 	"sync"
@@ -182,11 +182,6 @@ func (a *App) interceptClose(now time.Time) bool {
 		a.closeAsked = now
 	}
 	return true
-}
-
-// Version returns the build version for the status bar.
-func (a *App) Version() string {
-	return Version()
 }
 
 // code is the exit code once the window has closed. A resolve session

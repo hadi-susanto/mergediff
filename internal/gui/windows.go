@@ -1,4 +1,4 @@
-package main
+package gui
 
 import (
 	"context"
@@ -59,6 +59,8 @@ type Windows struct {
 	settings map[string]string
 	// emit sends a custom event to the frontends. Set by runGUI.
 	emit func(event string)
+	// version is the build version, for the status bar.
+	version string
 }
 
 // conflictsChangedEvent names the event that tells a Conflicts window
@@ -532,5 +534,5 @@ func (w *Windows) Compare(left, right string) ([]merge.Chunk, error) {
 
 // Version returns the build version for the status bar.
 func (w *Windows) Version() string {
-	return stateless.Version()
+	return w.version
 }
