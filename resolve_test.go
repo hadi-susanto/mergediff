@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"errors"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -11,50 +10,11 @@ import (
 
 	"github.com/hadi-susanto/mergediff/internal/gitconflict"
 	"github.com/hadi-susanto/mergediff/internal/session"
+	"github.com/hadi-susanto/mergediff/internal/testrepo"
 )
 
-// conflictRepo creates a repository where merging feature into main
-// stops with a.txt and sub/b.txt conflicted, and returns its directory.
-func conflictRepo(t *testing.T) string {
-	t.Helper()
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git not installed")
-	}
-	global := filepath.Join(t.TempDir(), "gitconfig")
-	os.WriteFile(global, nil, 0o644)
-	t.Setenv("GIT_CONFIG_GLOBAL", global)
-	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
-	dir := t.TempDir()
-	git := func(fail bool, args ...string) {
-		t.Helper()
-		out, err := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t",
-			"-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false"}, args...)...).CombinedOutput()
-		if (err != nil) != fail {
-			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
-		}
-	}
-	write := func(text string) {
-		os.MkdirAll(filepath.Join(dir, "sub"), 0o755)
-		writeFile(t, dir, "a.txt", text+"\n")
-		writeFile(t, filepath.Join(dir, "sub"), "b.txt", text+"\n")
-	}
-	git(false, "init", "-q")
-	git(false, "symbolic-ref", "HEAD", "refs/heads/main")
-	write("base")
-	git(false, "add", "-A")
-	git(false, "commit", "-q", "-m", "base")
-	git(false, "checkout", "-q", "-b", "feature")
-	write("feature")
-	git(false, "commit", "-q", "-am", "feature")
-	git(false, "checkout", "-q", "main")
-	write("main")
-	git(false, "commit", "-q", "-am", "main")
-	git(true, "merge", "--no-edit", "feature")
-	return dir
-}
-
 func TestRunResolve(t *testing.T) {
-	dir := conflictRepo(t)
+	dir := testrepo.Conflicted(t)
 	opened := stubGUI(t, 7)
 	var stdout, stderr bytes.Buffer
 
@@ -108,7 +68,7 @@ func TestRunResolveErrors(t *testing.T) {
 		t.Errorf("outside a repository: code %d, stderr %q", code, stderr.String())
 	}
 
-	dir := conflictRepo(t)
+	dir := testrepo.Conflicted(t)
 	t.Chdir(dir)
 	stderr.Reset()
 	if code := run([]string{"resolve", "../x"}, &stdout, &stderr); code != exitError ||
@@ -135,7 +95,7 @@ func TestWindowsAcceptSideRefusesOpenMergeWindows(t *testing.T) {
 }
 
 func TestWindowsOpenMerge(t *testing.T) {
-	dir := conflictRepo(t)
+	dir := testrepo.Conflicted(t)
 	s, err := session.StartResolve(dir, nil, false)
 	if err != nil {
 		t.Fatal(err)
