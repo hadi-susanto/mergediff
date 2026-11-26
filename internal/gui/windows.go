@@ -63,12 +63,6 @@ type Windows struct {
 	version string
 }
 
-// conflictsChangedEvent names the event that tells a Conflicts window
-// (window parent) to refresh: one of its merge windows opened or closed.
-func conflictsChangedEvent(parent string) string {
-	return "mergediff:conflicts-changed:" + parent
-}
-
 func newWindows() *Windows {
 	return &Windows{
 		wins:      map[string]*winEntry{},

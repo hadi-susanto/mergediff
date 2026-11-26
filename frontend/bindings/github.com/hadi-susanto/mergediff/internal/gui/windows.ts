@@ -18,19 +18,19 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as diff$0 from "./internal/diff/models.js";
+import * as diff$0 from "../diff/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as dirdiff$0 from "./internal/dirdiff/models.js";
+import * as dirdiff$0 from "../dirdiff/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as gitconflict$0 from "./internal/gitconflict/models.js";
+import * as gitconflict$0 from "../gitconflict/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as merge$0 from "./internal/merge/models.js";
+import * as merge$0 from "../merge/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as session$0 from "./internal/session/models.js";
+import * as session$0 from "../session/models.js";
 
 /**
  * AcceptSide resolves the calling window's conflicts at paths by taking
@@ -38,28 +38,28 @@ import * as session$0 from "./internal/session/models.js";
  * a merge window are refused.
  */
 export function AcceptSide(paths: string[] | null, side: gitconflict$0.Side): $CancellablePromise<session$0.ConflictList> {
-    return $Call.ByID(3651067012, paths, side);
+    return $Call.ByID(3822929128, paths, side);
 }
 
 /**
  * CharDiff returns character-level differences between two texts.
  */
 export function CharDiff(left: string, right: string): $CancellablePromise<diff$0.Span[] | null> {
-    return $Call.ByID(518724336, left, right);
+    return $Call.ByID(788022908, left, right);
 }
 
 /**
  * CloseRequestSeen acknowledges the calling window's close request.
  */
 export function CloseRequestSeen(): $CancellablePromise<void> {
-    return $Call.ByID(1777119725);
+    return $Call.ByID(821528929);
 }
 
 /**
  * Compare diffs two texts for the scratch view.
  */
 export function Compare(left: string, right: string): $CancellablePromise<merge$0.Chunk[] | null> {
-    return $Call.ByID(2292572938, left, right);
+    return $Call.ByID(1222045262, left, right);
 }
 
 /**
@@ -67,7 +67,7 @@ export function Compare(left: string, right: string): $CancellablePromise<merge$
  * Open lists the files it has open in merge windows.
  */
 export function Conflicts(): $CancellablePromise<session$0.ConflictList> {
-    return $Call.ByID(378483990);
+    return $Call.ByID(101299834);
 }
 
 /**
@@ -75,14 +75,14 @@ export function Conflicts(): $CancellablePromise<session$0.ConflictList> {
  * returns its entries. The frontend shows progress meanwhile.
  */
 export function DirEntries(): $CancellablePromise<dirdiff$0.Entry[] | null> {
-    return $Call.ByID(3391285058);
+    return $Call.ByID(964595742);
 }
 
 /**
  * DirProgress reports how far the calling window's directory comparison got.
  */
 export function DirProgress(): $CancellablePromise<dirdiff$0.Snapshot> {
-    return $Call.ByID(453018277);
+    return $Call.ByID(3818826241);
 }
 
 /**
@@ -90,7 +90,7 @@ export function DirProgress(): $CancellablePromise<dirdiff$0.Snapshot> {
  * comparison computed since the previous call.
  */
 export function DirStats(): $CancellablePromise<dirdiff$0.StatsBatch> {
-    return $Call.ByID(3288711257);
+    return $Call.ByID(3458139285);
 }
 
 /**
@@ -98,21 +98,21 @@ export function DirStats(): $CancellablePromise<dirdiff$0.StatsBatch> {
  * working-tree file was edited since Git stopped.
  */
 export function Edited(paths: string[] | null): $CancellablePromise<string[] | null> {
-    return $Call.ByID(138835398, paths);
+    return $Call.ByID(2017700354, paths);
 }
 
 /**
  * GuardClose turns the calling window's close guard on or off.
  */
 export function GuardClose(on: boolean): $CancellablePromise<void> {
-    return $Call.ByID(2773462668, on);
+    return $Call.ByID(371613664, on);
 }
 
 /**
  * LoadSession returns the calling window's session.
  */
 export function LoadSession(): $CancellablePromise<session$0.Session> {
-    return $Call.ByID(3519499525);
+    return $Call.ByID(1419500785);
 }
 
 /**
@@ -120,7 +120,7 @@ export function LoadSession(): $CancellablePromise<session$0.Session> {
  * conflict of the calling window, for its side panel.
  */
 export function MergeCounts(path: string): $CancellablePromise<session$0.MergeCounts> {
-    return $Call.ByID(928220953, path);
+    return $Call.ByID(1114799013, path);
 }
 
 /**
@@ -129,7 +129,7 @@ export function MergeCounts(path: string): $CancellablePromise<session$0.MergeCo
  * the window already showing it.
  */
 export function OpenEntry(path: string): $CancellablePromise<void> {
-    return $Call.ByID(2302430721, path);
+    return $Call.ByID(3062585005, path);
 }
 
 /**
@@ -137,7 +137,7 @@ export function OpenEntry(path: string): $CancellablePromise<void> {
  * merge window of its own, or focuses the one already showing it.
  */
 export function OpenMerge(path: string): $CancellablePromise<void> {
-    return $Call.ByID(3397542269, path);
+    return $Call.ByID(337147489, path);
 }
 
 /**
@@ -145,14 +145,14 @@ export function OpenMerge(path: string): $CancellablePromise<void> {
  * exits with code; a child window just closes.
  */
 export function Quit(code: number): $CancellablePromise<void> {
-    return $Call.ByID(862402996, code);
+    return $Call.ByID(582765464, code);
 }
 
 /**
  * Save writes the calling window's merge result.
  */
 export function Save(result: string): $CancellablePromise<void> {
-    return $Call.ByID(2150365302, result);
+    return $Call.ByID(414164346, result);
 }
 
 /**
@@ -160,21 +160,21 @@ export function Save(result: string): $CancellablePromise<void> {
  * edits.
  */
 export function SetDirty(dirty: boolean): $CancellablePromise<void> {
-    return $Call.ByID(4117643367, dirty);
+    return $Call.ByID(1846754059, dirty);
 }
 
 /**
  * Settings returns the effective settings of the calling window.
  */
 export function Settings(): $CancellablePromise<{ [_ in string]?: string } | null> {
-    return $Call.ByID(3483087558);
+    return $Call.ByID(905997922);
 }
 
 /**
  * ShowChanges opens a modify/delete conflict's changes in a diff window.
  */
 export function ShowChanges(path: string): $CancellablePromise<void> {
-    return $Call.ByID(3598217195, path);
+    return $Call.ByID(3741482463, path);
 }
 
 /**
@@ -182,12 +182,12 @@ export function ShowChanges(path: string): $CancellablePromise<void> {
  * windows with unsaved edits, so it can ask before closing them.
  */
 export function UnsavedMerges(): $CancellablePromise<string[] | null> {
-    return $Call.ByID(4088867322);
+    return $Call.ByID(4248720462);
 }
 
 /**
  * Version returns the build version for the status bar.
  */
 export function Version(): $CancellablePromise<string> {
-    return $Call.ByID(273300373);
+    return $Call.ByID(741933201);
 }

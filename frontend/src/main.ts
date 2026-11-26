@@ -1,5 +1,5 @@
 import { Clipboard, Events, Window } from "@wailsio/runtime";
-import * as Backend from "../bindings/github.com/hadi-susanto/mergediff/windows";
+import * as Backend from "../bindings/github.com/hadi-susanto/mergediff/internal/gui/windows";
 import type { Side } from "../bindings/github.com/hadi-susanto/mergediff/internal/gitconflict/models";
 import { Mode, type Session } from "../bindings/github.com/hadi-susanto/mergediff/internal/session/models";
 import { showError } from "./dialogs.ts";
