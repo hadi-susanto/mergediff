@@ -98,7 +98,7 @@ func TestStartResolveListsAndRefreshes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Mode != Resolve || s.Title != "Resolve conflicts · "+filepath.Base(dir) || len(s.Paths) != 1 {
+	if s.view.Mode != Resolve || s.view.Title != "Resolve conflicts · "+filepath.Base(dir) || len(s.view.Paths) != 1 {
 		t.Fatalf("session = %+v", s)
 	}
 	list, err := s.Conflicts()
@@ -217,22 +217,6 @@ func TestMergeCounts(t *testing.T) {
 	}
 }
 
-func TestResolveMethodsOtherModes(t *testing.T) {
-	s := NewScratch()
-	if _, err := s.Conflicts(); !errors.Is(err, ErrNotResolve) {
-		t.Errorf("Conflicts = %v", err)
-	}
-	if _, err := s.Accept(nil, gitconflict.Yours); !errors.Is(err, ErrNotResolve) {
-		t.Errorf("Accept = %v", err)
-	}
-	if _, err := s.Remaining(); !errors.Is(err, ErrNotResolve) {
-		t.Errorf("Remaining = %v", err)
-	}
-	if _, err := s.MergeCounts("a"); !errors.Is(err, ErrNotResolve) {
-		t.Errorf("MergeCounts = %v", err)
-	}
-}
-
 func TestAcceptUnknownSide(t *testing.T) {
 	dir := conflictRepo(t, map[string][3]string{"a.txt": {"a\n", "a main\n", "a feature\n"}})
 	s, err := StartResolve(dir, nil, false)
@@ -255,21 +239,21 @@ func TestMergeSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := s.MergeSession("a.txt")
+	m, err := s.Merge("a.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Mode != Merge || m.Merge.Base != "one\ntwo\nthree\n" || m.Text.Left != "one\nTWO main\nthree\nfour\n" || m.Text.Right != "one\nTWO feature\nthree\n" {
+	if m.view.Mode != Merge || m.view.Merge.Base != "one\ntwo\nthree\n" || m.view.Text.Left != "one\nTWO main\nthree\nfour\n" || m.view.Text.Right != "one\nTWO feature\nthree\n" {
 		t.Fatalf("texts: %+v", m)
 	}
-	if m.Merge.InitialResult != m.Merge.Base || m.Merge.AutoApplied {
+	if m.view.Merge.InitialResult != m.view.Merge.Base || m.view.Merge.AutoApplied {
 		t.Errorf("initial result should be base without --auto-apply")
 	}
-	if m.Text.LeftLabel != "main" || m.Text.RightLabel != "feature" {
-		t.Errorf("labels = %q, %q; want main, feature", m.Text.LeftLabel, m.Text.RightLabel)
+	if m.view.Text.LeftLabel != "main" || m.view.Text.RightLabel != "feature" {
+		t.Errorf("labels = %q, %q; want main, feature", m.view.Text.LeftLabel, m.view.Text.RightLabel)
 	}
-	if m.Title != "a.txt" || m.Text.Language != "" {
-		t.Errorf("title %q language %q", m.Title, m.Text.Language)
+	if m.view.Title != "a.txt" || m.view.Text.Language != "" {
+		t.Errorf("title %q language %q", m.view.Title, m.view.Text.Language)
 	}
 	if err := m.Save("one\nmerged\nthree\n"); err != nil {
 		t.Fatal(err)
@@ -280,20 +264,20 @@ func TestMergeSession(t *testing.T) {
 	if out := gitIn(t, dir, "ls-files", "-u", "--", "a.txt"); out != "" {
 		t.Errorf("still unmerged after save:\n%s", out)
 	}
-	if _, err := s.MergeSession("a.txt"); !errors.Is(err, ErrNotConflicted) {
+	if _, err := s.Merge("a.txt"); !errors.Is(err, ErrNotConflicted) {
 		t.Errorf("merge of a resolved file: %v, want ErrNotConflicted", err)
 	}
-	if _, err := s.MergeSession("b.txt"); !errors.Is(err, ErrCannotOpen) {
+	if _, err := s.Merge("b.txt"); !errors.Is(err, ErrCannotOpen) {
 		t.Errorf("merge of modify/delete: %v, want ErrCannotOpen", err)
 	}
 
 	// CRLF in the checkout: the merge keeps it.
-	c, err := s.MergeSession("crlf.txt")
+	c, err := s.Merge("crlf.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Text.EOL != "CRLF" || strings.Contains(c.Text.Left, "\r") {
-		t.Errorf("EOL %s, local %q", c.Text.EOL, c.Text.Left)
+	if c.view.Text.EOL != "CRLF" || strings.Contains(c.view.Text.Left, "\r") {
+		t.Errorf("EOL %s, local %q", c.view.Text.EOL, c.view.Text.Left)
 	}
 	if err := c.Save("a merged\nb\n"); err != nil {
 		t.Fatal(err)
@@ -310,12 +294,12 @@ func TestMergeSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m2, err := s2.MergeSession("a.txt")
+	m2, err := s2.Merge("a.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !m2.Merge.AutoApplied || m2.Merge.InitialResult != "one\ntwo\nthree\nfour\n" {
-		t.Errorf("auto-applied initial result = %q", m2.Merge.InitialResult)
+	if !m2.view.Merge.AutoApplied || m2.view.Merge.InitialResult != "one\ntwo\nthree\nfour\n" {
+		t.Errorf("auto-applied initial result = %q", m2.view.Merge.InitialResult)
 	}
 }
 
@@ -333,21 +317,21 @@ func TestChangesSession(t *testing.T) {
 		{"theirs-deleted.txt", "base mine\n", "main"},
 		{"yours-deleted.txt", "base theirs\n", "feature"},
 	} {
-		d, err := s.ChangesSession(tc.path)
+		d, err := s.Changes(tc.path)
 		if err != nil {
 			t.Fatalf("%s: %v", tc.path, err)
 		}
-		if d.Mode != Diff || d.Text.Left != "base\n" || d.Text.Right != tc.remote {
-			t.Errorf("%s: local %q remote %q", tc.path, d.Text.Left, d.Text.Right)
+		if d.view.Mode != Diff || d.view.Text.Left != "base\n" || d.view.Text.Right != tc.remote {
+			t.Errorf("%s: local %q remote %q", tc.path, d.view.Text.Left, d.view.Text.Right)
 		}
-		if d.Text.LeftLabel != "Base" || d.Text.RightLabel != tc.label {
-			t.Errorf("%s: labels %q, %q", tc.path, d.Text.LeftLabel, d.Text.RightLabel)
+		if d.view.Text.LeftLabel != "Base" || d.view.Text.RightLabel != tc.label {
+			t.Errorf("%s: labels %q, %q", tc.path, d.view.Text.LeftLabel, d.view.Text.RightLabel)
 		}
-		if len(d.Text.Chunks) == 0 {
+		if len(d.view.Text.Chunks) == 0 {
 			t.Errorf("%s: no chunks", tc.path)
 		}
 	}
-	if _, err := s.ChangesSession("both.txt"); !errors.Is(err, ErrCannotOpen) {
+	if _, err := s.Changes("both.txt"); !errors.Is(err, ErrCannotOpen) {
 		t.Errorf("changes of a text conflict: %v, want ErrCannotOpen", err)
 	}
 	if out := gitIn(t, dir, "status", "--porcelain"); !strings.Contains(out, "UD theirs-deleted.txt") {
@@ -373,10 +357,35 @@ func TestEdited(t *testing.T) {
 	if got, err := s.Edited([]string{"a.txt", "b.txt"}); err != nil || len(got) != 1 || got[0] != "b.txt" {
 		t.Errorf("after editing b.txt: %v, %v", got, err)
 	}
-	if m, err := s.MergeSession("b.txt"); err != nil || !m.Merge.EditedOnDisk {
+	if m, err := s.Merge("b.txt"); err != nil || !m.view.Merge.EditedOnDisk {
 		t.Errorf("merge of an edited file: EditedOnDisk false (%v)", err)
 	}
-	if m, err := s.MergeSession("a.txt"); err != nil || m.Merge.EditedOnDisk {
+	if m, err := s.Merge("a.txt"); err != nil || m.view.Merge.EditedOnDisk {
 		t.Errorf("merge of an untouched file: EditedOnDisk true (%v)", err)
+	}
+}
+
+// TestResolveExitCode: a Conflicts window's exit code comes from Git when
+// it closes, whatever Quit said, except an error exit.
+func TestResolveExitCode(t *testing.T) {
+	dir := conflictRepo(t, map[string][3]string{"a.txt": {"1\n", "M\n", "F\n"}})
+	s, err := StartResolve(dir, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		code int
+		quit bool
+		want int
+	}{{0, false, 1}, {0, true, 1}, {2, true, 2}} {
+		if got := s.ExitCode(c.code, c.quit); got != c.want {
+			t.Errorf("conflicts left: ExitCode(%d, %v) = %d, want %d", c.code, c.quit, got, c.want)
+		}
+	}
+	if _, err := s.Accept([]string{"a.txt"}, gitconflict.Yours); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.ExitCode(1, true); got != 0 {
+		t.Errorf("none left: ExitCode(1, true) = %d, want 0", got)
 	}
 }

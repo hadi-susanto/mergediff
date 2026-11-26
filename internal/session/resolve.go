@@ -17,8 +17,6 @@ const Resolve Mode = "resolve"
 var (
 	// ErrNoConflicts is returned by StartResolve when nothing is unmerged.
 	ErrNoConflicts = errors.New("no conflicts to resolve")
-	// ErrNotResolve is returned by the conflict methods in other modes.
-	ErrNotResolve = errors.New("not a conflict resolution session")
 	// ErrNotConflicted is returned for a path that is not (or no longer)
 	// unmerged.
 	ErrNotConflicted = errors.New("not conflicted")
@@ -54,6 +52,34 @@ type MergeCounts struct {
 	NonConflicting int `json:"nonConflicting"`
 }
 
+// ResolveSession is the Conflicts window (mergediff resolve): a Git
+// working tree's conflicts under the PATH limits.
+type ResolveSession struct {
+	view View
+	res  *resolveState
+}
+
+// View returns what the frontend shows.
+func (s *ResolveSession) View() View { return s.view }
+
+// ExitCode asks Git once the window closes: 0 when no conflicts are left
+// within the PATH limits, 1 when some are, 2 when Git cannot tell. An
+// error exit (Quit(2)) stays.
+func (s *ResolveSession) ExitCode(code int, quit bool) int {
+	if quit && code == exitError {
+		return exitError
+	}
+	n, err := s.Remaining()
+	switch {
+	case err != nil:
+		return exitError
+	case n > 0:
+		return exitCancel
+	default:
+		return exitOK
+	}
+}
+
 // resolveState is a resolve session's repository and rows.
 type resolveState struct {
 	repo      *gitconflict.Repo
@@ -68,7 +94,7 @@ type resolveState struct {
 // conflicts under paths (PATH arguments, relative to dir). It fails with
 // ErrNoConflicts when there are none, and with gitconflict's errors when
 // dir is not in a working tree or Git is missing or too old.
-func StartResolve(dir string, paths []string, autoApply bool) (*Session, error) {
+func StartResolve(dir string, paths []string, autoApply bool) (*ResolveSession, error) {
 	repo, err := gitconflict.Open(dir)
 	if err != nil {
 		return nil, err
@@ -85,9 +111,8 @@ func StartResolve(dir string, paths []string, autoApply bool) (*Session, error) 
 	if list.Unresolved == 0 {
 		return nil, ErrNoConflicts
 	}
-	return &Session{
-		View: View{Mode: Resolve, Paths: []string{repo.Top}, Title: "Resolve conflicts · " + repo.Name()},
-		eol:  textio.LF,
+	return &ResolveSession{
+		view: View{Mode: Resolve, Paths: []string{repo.Top}, Title: "Resolve conflicts · " + repo.Name()},
 		res:  rs,
 	}, nil
 }
@@ -119,29 +144,16 @@ func (rs *resolveState) refresh() (ConflictList, error) {
 	return list, nil
 }
 
-func (s *Session) resolve() (*resolveState, error) {
-	if s.res == nil {
-		return nil, ErrNotResolve
-	}
-	return s.res, nil
-}
-
 // Conflicts re-reads the conflicts and returns the window's rows.
-func (s *Session) Conflicts() (ConflictList, error) {
-	rs, err := s.resolve()
-	if err != nil {
-		return ConflictList{}, err
-	}
+func (s *ResolveSession) Conflicts() (ConflictList, error) {
+	rs := s.res
 	return rs.refresh()
 }
 
 // Accept resolves paths by taking side's version (see gitconflict.Accept)
 // and returns the refreshed rows.
-func (s *Session) Accept(paths []string, side gitconflict.Side) (ConflictList, error) {
-	rs, err := s.resolve()
-	if err != nil {
-		return ConflictList{}, err
-	}
+func (s *ResolveSession) Accept(paths []string, side gitconflict.Side) (ConflictList, error) {
+	rs := s.res
 	if side != gitconflict.Yours && side != gitconflict.Theirs {
 		return ConflictList{}, fmt.Errorf("accept: unknown side %q", side)
 	}
@@ -154,11 +166,8 @@ func (s *Session) Accept(paths []string, side gitconflict.Side) (ConflictList, e
 
 // Remaining counts the conflicts left within the session's PATH limits,
 // read fresh from Git; it decides the exit code.
-func (s *Session) Remaining() (int, error) {
-	rs, err := s.resolve()
-	if err != nil {
-		return 0, err
-	}
+func (s *ResolveSession) Remaining() (int, error) {
+	rs := s.res
 	cs, err := rs.repo.List(rs.specs, gitconflict.Sides{})
 	if err != nil {
 		return 0, err
@@ -209,11 +218,8 @@ func (rs *resolveState) stages(c *gitconflict.Conflict, sides gitconflict.Sides)
 
 // MergeCounts merges the text conflict at path and counts its conflicts
 // and non-conflicting changes, for the side panel.
-func (s *Session) MergeCounts(path string) (MergeCounts, error) {
-	rs, err := s.resolve()
-	if err != nil {
-		return MergeCounts{}, err
-	}
+func (s *ResolveSession) MergeCounts(path string) (MergeCounts, error) {
+	rs := s.res
 	c, op, err := rs.conflict(path)
 	if err != nil {
 		return MergeCounts{}, err
@@ -237,16 +243,13 @@ func (s *Session) MergeCounts(path string) (MergeCounts, error) {
 	return n, nil
 }
 
-// MergeSession opens the text conflict at path as a 3-way merge: base,
+// Merge opens the text conflict at path as a 3-way merge: base,
 // yours and theirs from Git's stages (with the checkout's line endings),
 // the working-tree file as the output. Saving writes it and runs git add.
 // The panes are labelled with the operation's branch names. Other kinds of
 // conflict fail with ErrCannotOpen.
-func (s *Session) MergeSession(path string) (*Session, error) {
-	rs, err := s.resolve()
-	if err != nil {
-		return nil, err
-	}
+func (s *ResolveSession) Merge(path string) (*MergeSession, error) {
+	rs := s.res
 	c, op, err := rs.conflict(path)
 	if err != nil {
 		return nil, err
@@ -264,23 +267,20 @@ func (s *Session) MergeSession(path string) (*Session, error) {
 	}
 	abs := rs.repo.Abs(path)
 	m := newMerge(base, yours, theirs, []string{abs, abs, abs, abs}, path, abs, rs.autoApply)
-	m.Text.LeftLabel = label(op.YoursLabel, "yours")
-	m.Text.RightLabel = label(op.TheirsLabel, "theirs")
-	m.Merge.EditedOnDisk = edited
+	m.view.Text.LeftLabel = label(op.YoursLabel, "yours")
+	m.view.Text.RightLabel = label(op.TheirsLabel, "theirs")
+	m.view.Merge.EditedOnDisk = edited
 	repo := rs.repo
 	m.saveTo = func(text string, eol textio.EOL) error { return repo.SaveMerged(path, text, eol) }
 	return m, nil
 }
 
-// ChangesSession opens a modify/delete conflict at path as a read-only
+// Changes opens a modify/delete conflict at path as a read-only
 // diff of base (empty when there is none) against the side that kept the
 // file. Other conflicts fail with ErrCannotOpen; binary content with
 // textio's errors.
-func (s *Session) ChangesSession(path string) (*Session, error) {
-	rs, err := s.resolve()
-	if err != nil {
-		return nil, err
-	}
+func (s *ResolveSession) Changes(path string) (*DiffSession, error) {
+	rs := s.res
 	c, op, err := rs.conflict(path)
 	if err != nil {
 		return nil, err
@@ -308,9 +308,8 @@ func (s *Session) ChangesSession(path string) (*Session, error) {
 	eol := textio.DetectEOL(kept, base)
 	text := diffTexts(base.Text, kept.Text, Language(path), eol)
 	text.LeftLabel, text.RightLabel = "Base", name
-	return &Session{
-		View: View{Mode: Diff, Paths: []string{abs, abs}, Title: path + " · changes", Text: text},
-		eol:  eol,
+	return &DiffSession{
+		view: View{Mode: Diff, Paths: []string{abs, abs}, Title: path + " · changes", Text: text},
 	}, nil
 }
 
@@ -326,11 +325,8 @@ func label(name, role string) string {
 // Git stopped (gitconflict.Repo.Edited), sorted: accepting a side or
 // saving a merge would replace those edits. Paths no longer unmerged are
 // left out.
-func (s *Session) Edited(paths []string) ([]string, error) {
-	rs, err := s.resolve()
-	if err != nil {
-		return nil, err
-	}
+func (s *ResolveSession) Edited(paths []string) ([]string, error) {
+	rs := s.res
 	out := []string{}
 	if len(paths) == 0 {
 		return out, nil
