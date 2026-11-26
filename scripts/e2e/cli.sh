@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Command line: help, version, usage errors and exit codes, the settings
-# subcommand's help, reserved words used as file names, and options before
-# "--". Most checks need no window; the file-name checks open one and close
-# it again.
+# Command line: help and version (flags and subcommands), usage errors and
+# exit codes, the settings subcommand's help and the flags it rejects,
+# reserved words used as file names, and options before "--". Most checks
+# need no window; the file-name checks open one and close it again.
 set -u
 source "$(dirname "$0")/lib.sh"
 
@@ -108,4 +108,35 @@ section "options before --"
 open_and_close "m.txt" -o m.txt -- help a.txt b.txt
 check "-o M -- B L R: merge closed unsaved exits 1" test $RC -eq 1
 check "-o M -- B L R: nothing written" test ! -e m.txt
+
+section "help and version subcommands"
+cli help
+check "help: general usage, exit 0" bash -c "test $RC -eq 0 && grep -qF 'mergediff resolve' '$WORK/out'"
+cli help settings
+check "help settings: settings usage, exit 0" bash -c "test $RC -eq 0 && grep -qF 'mergediff settings get KEY' '$WORK/out' && ! grep -qF 'mergediff resolve' '$WORK/out'"
+cli help resolve
+check "help resolve: general usage, exit 0" bash -c "test $RC -eq 0 && grep -qF 'mergediff resolve' '$WORK/out'"
+cli version
+check "version: exit 0" test $RC -eq 0
+check "version: 'mergediff DATE (COMMIT)'" grep -qE '^mergediff [^ ]+ \([^)]+\)$' "$WORK/out"
+cli version --help
+check "version --help: general usage, exit 0" bash -c "test $RC -eq 0 && grep -qF Usage: '$WORK/out'"
+expect_usage "version takes no arguments" version x
+expect_usage 'unknown help topic "nope"' help nope
+expect_usage "-o is not valid with help" help -o m.txt
+
+section "settings rejects window flags"
+expect_settings_usage() { # MESSAGE ARGS...
+  local msg=$1
+  shift
+  cli "$@"
+  check "$* → exit 2" test $RC -eq 2
+  check "$* → '$msg'" err_has "mergediff: $msg"
+  check "$* → settings usage" err_has "mergediff settings get KEY"
+}
+expect_settings_usage "--theme is not valid with settings; to save it, use: mergediff settings set theme dark" settings list --theme dark
+expect_settings_usage "--theme is not valid with settings" --theme dark settings list
+expect_settings_usage "-o is not valid with settings" settings -o m.txt
+expect_settings_usage "--auto-apply is not valid with settings" settings path --auto-apply
+check "config file untouched" test ! -e "$XDG_CONFIG_HOME/mergediff/config.toml"
 summary
