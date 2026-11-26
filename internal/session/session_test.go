@@ -1,17 +1,12 @@
 package session
 
 import (
-	"encoding/json"
 	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/hadi-susanto/mergediff/internal/dirdiff"
 	"github.com/hadi-susanto/mergediff/internal/merge"
 	"github.com/hadi-susanto/mergediff/internal/textio"
 )
@@ -33,159 +28,6 @@ func kinds(chunks []merge.Chunk) string {
 	return strings.Join(s, " ")
 }
 
-func TestLoadDiff(t *testing.T) {
-	dir := t.TempDir()
-	left := write(t, dir, "a.txt", "one\ntwo\nthree\n")
-	right := write(t, dir, "b.txt", "one\n2\nthree\n")
-	s, err := LoadDiff(left, right)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if s.Mode != Diff || s.Text.Left != "one\ntwo\nthree\n" || s.Text.Right != "one\n2\nthree\n" || s.Merge != nil {
-		t.Fatalf("unexpected session: %+v", s)
-	}
-	if got := kinds(s.Text.Chunks); got != "unchanged remote unchanged" {
-		t.Fatalf("kinds = %q", got)
-	}
-	if c := s.Text.Chunks[1]; c.Local != (merge.Range{Start: 1, End: 2}) || c.Remote != (merge.Range{Start: 1, End: 2}) {
-		t.Fatalf("changed chunk = %+v", c)
-	}
-	if s.Title != "a.txt ↔ b.txt" || s.Text.EOL != "LF" {
-		t.Fatalf("title %q eol %q", s.Title, s.Text.EOL)
-	}
-	if err := s.Save("x"); !errors.Is(err, ErrNotMerge) {
-		t.Fatalf("Save in diff mode: err = %v, want ErrNotMerge", err)
-	}
-}
-
-func TestLoadDiffIdenticalSerialisesEmptyChunks(t *testing.T) {
-	dir := t.TempDir()
-	a := write(t, dir, "a", "")
-	b := write(t, dir, "b", "")
-	s, err := LoadDiff(a, b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data, err := json.Marshal(s)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(data), `"chunks":[]`) {
-		t.Fatalf("chunks not serialised as []: %s", data)
-	}
-	for _, private := range []string{"output", `"eol":"\n"`} {
-		if strings.Contains(string(data), private) {
-			t.Fatalf("JSON leaks %q: %s", private, data)
-		}
-	}
-}
-
-func TestLoadDiffErrors(t *testing.T) {
-	dir := t.TempDir()
-	ok := write(t, dir, "ok.txt", "x\n")
-	bin := write(t, dir, "bin", "a\x00b")
-	missing := filepath.Join(dir, "missing")
-
-	_, err := LoadDiff(missing, ok)
-	if !errors.Is(err, fs.ErrNotExist) || !strings.HasPrefix(err.Error(), "read LEFT: ") || !strings.Contains(err.Error(), missing) {
-		t.Fatalf("missing LEFT: err = %v", err)
-	}
-	_, err = LoadDiff(ok, bin)
-	if !errors.Is(err, textio.ErrBinary) || !strings.HasPrefix(err.Error(), "read RIGHT: ") {
-		t.Fatalf("binary RIGHT: err = %v", err)
-	}
-}
-
-func TestLoadMergeAndSave(t *testing.T) {
-	dir := t.TempDir()
-	base := write(t, dir, "base", "a\r\nb\r\nc\r\nd\r\ne\r\n")
-	local := write(t, dir, "local", "A\r\nb\r\nc\r\nd\r\ne\r\n")
-	remote := write(t, dir, "remote", "a\r\nb\r\nC\r\nd\r\nE\r\n")
-	out := filepath.Join(dir, "main.go")
-
-	s, err := LoadMerge(base, local, remote, out, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if s.Mode != Merge || s.Title != "main.go" || s.Text.Language != "go" || s.Text.EOL != "CRLF" {
-		t.Fatalf("unexpected session header: %+v", s)
-	}
-	if s.Merge.InitialResult != "a\nb\nc\nd\ne\n" {
-		t.Fatalf("initial result = %q, want the base text", s.Merge.InitialResult)
-	}
-	if got := kinds(s.Text.Chunks); got != "local unchanged remote unchanged remote" {
-		t.Fatalf("kinds = %q", got)
-	}
-	if err := s.Save("A\nb\nC\nd\nE\n"); err != nil {
-		t.Fatal(err)
-	}
-	got, err := os.ReadFile(out)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != "A\r\nb\r\nC\r\nd\r\nE\r\n" {
-		t.Fatalf("saved %q, want CRLF result", got)
-	}
-
-	auto, err := LoadMerge(base, local, remote, out, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if auto.Merge.InitialResult != "A\nb\nC\nd\nE\n" || !auto.Merge.AutoApplied {
-		t.Fatalf("auto-applied initial result = %q, AutoApplied = %v", auto.Merge.InitialResult, auto.Merge.AutoApplied)
-	}
-	if s.Merge.AutoApplied {
-		t.Fatal("AutoApplied set without --auto-apply")
-	}
-}
-
-func TestLoadMergeMissingBase(t *testing.T) {
-	dir := t.TempDir()
-	local := write(t, dir, "local", "x\n")
-	remote := write(t, dir, "remote", "y\n")
-	for _, base := range []string{"", filepath.Join(dir, "nope")} {
-		s, err := LoadMerge(base, local, remote, filepath.Join(dir, "out"), true)
-		if err != nil {
-			t.Fatalf("base %q: %v", base, err)
-		}
-		if s.Merge.Base != "" || kinds(s.Text.Chunks) != "conflict" || s.Merge.InitialResult != "" {
-			t.Fatalf("base %q: unexpected session %+v", base, s)
-		}
-	}
-}
-
-func TestLoadMergeErrors(t *testing.T) {
-	dir := t.TempDir()
-	ok := write(t, dir, "ok", "x\n")
-	bad := write(t, dir, "bad", "\xff\n")
-	missing := filepath.Join(dir, "missing")
-	out := filepath.Join(dir, "out")
-	tests := []struct {
-		name                string
-		base, local, remote string
-		prefix              string
-		target              error
-	}{
-		{"missing local", ok, missing, ok, "read LOCAL: ", fs.ErrNotExist},
-		{"missing remote", ok, ok, missing, "read REMOTE: ", fs.ErrNotExist},
-		{"invalid utf8 base", bad, ok, ok, "read BASE: ", textio.ErrNotUTF8},
-	}
-	for _, tt := range tests {
-		_, err := LoadMerge(tt.base, tt.local, tt.remote, out, false)
-		if !errors.Is(err, tt.target) || !strings.HasPrefix(err.Error(), tt.prefix) {
-			t.Errorf("%s: err = %v", tt.name, err)
-		}
-	}
-	// Saving to an unwritable location reports the MERGED role.
-	s, err := LoadMerge(ok, ok, ok, filepath.Join(dir, "no-such-dir", "out"), false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Save("x\n"); err == nil || !strings.HasPrefix(err.Error(), "write MERGED: ") {
-		t.Fatalf("Save to missing dir: err = %v", err)
-	}
-}
-
 func TestLanguage(t *testing.T) {
 	tests := map[string]string{
 		"main.go":               "go",
@@ -203,204 +45,7 @@ func TestLanguage(t *testing.T) {
 	}
 }
 
-func TestScratchAndCompare(t *testing.T) {
-	s := NewScratch()
-	if s.Mode != Scratch || s.Text.Chunks == nil || s.Paths == nil || s.Text.Left != "" || s.Text.Right != "" {
-		t.Fatalf("NewScratch = %+v", s)
-	}
-	if err := s.Save("x"); !errors.Is(err, ErrNotMerge) {
-		t.Fatalf("Save in scratch mode: %v", err)
-	}
-
-	chunks, err := Compare("a\nb\nc\n", "a\nB\nc\n")
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []merge.Chunk{
-		{Kind: merge.Unchanged, Base: merge.Range{Start: 0, End: 1}, Local: merge.Range{Start: 0, End: 1}, Remote: merge.Range{Start: 0, End: 1}},
-		{Kind: merge.RemoteOnly, Base: merge.Range{Start: 1, End: 2}, Local: merge.Range{Start: 1, End: 2}, Remote: merge.Range{Start: 1, End: 2}},
-		{Kind: merge.Unchanged, Base: merge.Range{Start: 2, End: 3}, Local: merge.Range{Start: 2, End: 3}, Remote: merge.Range{Start: 2, End: 3}},
-	}
-	if !reflect.DeepEqual(chunks, want) {
-		t.Fatalf("Compare = %+v", chunks)
-	}
-
-	// Pasted CRLF text equals the LF text; empty texts give [] not nil.
-	for _, pair := range [][2]string{{"a\r\nb\r\n", "a\nb\n"}, {"", ""}} {
-		chunks, err := Compare(pair[0], pair[1])
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, c := range chunks {
-			if c.Kind != merge.Unchanged {
-				t.Fatalf("Compare(%q, %q) has a change: %+v", pair[0], pair[1], chunks)
-			}
-		}
-		if chunks == nil {
-			t.Fatal("chunks are nil")
-		}
-	}
-
-	if _, err := Compare("a\x00b", "x"); !errors.Is(err, textio.ErrBinary) {
-		t.Fatalf("NUL text: err = %v", err)
-	}
-}
-
-func TestStartDirDiff(t *testing.T) {
-	dir := t.TempDir()
-	left, right := filepath.Join(dir, "l"), filepath.Join(dir, "r")
-	for _, d := range []string{left, right} {
-		if err := os.Mkdir(d, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write(t, left, "same.txt", "x\n")
-	write(t, right, "same.txt", "x\n")
-	write(t, right, "new.txt", "y\n")
-
-	s, err := StartDirDiff(left, right)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if s.Mode != DirDiff || s.Title != "Compare directories" || !reflect.DeepEqual(s.Paths, []string{left, right}) {
-		t.Errorf("session = %+v", s)
-	}
-	entries, err := s.DirEntries()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got []string
-	for _, e := range entries {
-		got = append(got, e.Path+" "+string(e.Status))
-	}
-	if want := []string{"new.txt added", "same.txt unchanged"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("entries = %q, want %q", got, want)
-	}
-	if p := s.DirProgress(); !p.Done || p.Found != 3 || p.Compared != 2 {
-		t.Errorf("progress after the comparison = %+v, want done, 3 found, 2 compared", p)
-	}
-	// A copy (as LoadSession returns) shares the comparison.
-	c := *s
-	if again, err := c.DirEntries(); err != nil || len(again) != 2 {
-		t.Errorf("copy: %d entries, %v", len(again), err)
-	}
-	if err := s.Save("x"); !errors.Is(err, ErrNotMerge) {
-		t.Errorf("Save in dirdiff mode: %v, want ErrNotMerge", err)
-	}
-	data, err := json.Marshal(s)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(data), `"mode":"dirdiff"`) {
-		t.Errorf("JSON = %s", data)
-	}
-}
-
-func TestDirStats(t *testing.T) {
-	dir := t.TempDir()
-	left, right := filepath.Join(dir, "l"), filepath.Join(dir, "r")
-	os.MkdirAll(left, 0o755)
-	os.MkdirAll(right, 0o755)
-	write(t, left, "m.txt", "a\nb\n")
-	write(t, right, "m.txt", "a\nB\nc\n")
-	write(t, right, "new.txt", "x\n")
-	write(t, left, "same.txt", "s\n")
-	write(t, right, "same.txt", "s\n")
-	s, err := StartDirDiff(left, right)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := map[string]dirdiff.Stat{}
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		b, err := s.DirStats()
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, ps := range b.Stats {
-			if _, dup := got[ps.Path]; dup {
-				t.Errorf("%s delivered twice", ps.Path)
-			}
-			got[ps.Path] = ps.Stat
-		}
-		if b.Done {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("stats never done")
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	want := map[string]dirdiff.Stat{"m.txt": {Added: 2, Deleted: 1}, "new.txt": {Added: 1}}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("stats = %+v, want %+v", got, want)
-	}
-	if b, _ := s.DirStats(); !b.Done || len(b.Stats) != 0 {
-		t.Errorf("after done: %+v, want done and empty", b)
-	}
-	if _, err := NewScratch().DirStats(); !errors.Is(err, ErrNotDirDiff) {
-		t.Errorf("DirStats in scratch mode: %v", err)
-	}
-}
-
-func TestStartDirDiffAbsolutePaths(t *testing.T) {
-	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "l"), 0o755)
-	os.MkdirAll(filepath.Join(dir, "r"), 0o755)
-	t.Chdir(dir)
-	s, err := StartDirDiff("l", "r")
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []string{filepath.Join(dir, "l"), filepath.Join(dir, "r")}
-	if !reflect.DeepEqual(s.Paths, want) {
-		t.Errorf("Paths = %q, want %q", s.Paths, want)
-	}
-}
-
-func TestStartDirDiffErrors(t *testing.T) {
-	dir := t.TempDir()
-	file := write(t, dir, "f.txt", "x")
-	if _, err := StartDirDiff(dir, file); err == nil || !strings.Contains(err.Error(), "RIGHT") {
-		t.Errorf("RIGHT is a file: %v, want an error naming RIGHT", err)
-	}
-	if _, err := StartDirDiff(filepath.Join(dir, "missing"), dir); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("LEFT missing: %v, want ErrNotExist", err)
-	}
-}
-
-func TestDirEntriesOtherModes(t *testing.T) {
-	s := NewScratch()
-	if _, err := s.DirEntries(); !errors.Is(err, ErrNotDirDiff) {
-		t.Errorf("DirEntries in scratch mode: %v, want ErrNotDirDiff", err)
-	}
-	if p := s.DirProgress(); !p.Done {
-		t.Errorf("DirProgress in scratch mode = %+v, want done", p)
-	}
-}
-
-func TestLoadPairMissingSides(t *testing.T) {
-	dir := t.TempDir()
-	f := write(t, dir, "a.go", "one\r\ntwo\r\n")
-	for _, tc := range []struct{ left, right, local, remote string }{
-		{"", f, "", "one\ntwo\n"},
-		{f, "", "one\ntwo\n", ""},
-	} {
-		s, err := LoadPair(tc.left, tc.right, "pkg/a.go")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if s.Mode != Diff || s.Text.Left != tc.local || s.Text.Right != tc.remote || s.Title != "pkg/a.go" ||
-			s.Text.Language != "go" || s.Text.EOL != "CRLF" || !reflect.DeepEqual(s.Paths, []string{tc.left, tc.right}) {
-			t.Errorf("LoadPair(%q, %q) = %+v", tc.left, tc.right, s)
-		}
-		if len(s.Text.Chunks) == 0 {
-			t.Errorf("LoadPair(%q, %q): no chunks", tc.left, tc.right)
-		}
-	}
-}
-
-func TestEntrySession(t *testing.T) {
+func TestEntry(t *testing.T) {
 	dir := t.TempDir()
 	left, right := filepath.Join(dir, "l"), filepath.Join(dir, "r")
 	os.MkdirAll(filepath.Join(left, "sub"), 0o755)
@@ -418,14 +63,14 @@ func TestEntrySession(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	child, err := s.EntrySession("sub/m.txt")
+	child, err := s.Entry("sub/m.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if child.Mode != Diff || child.Text.Left != "a\n" || child.Text.Right != "" || child.Title != "sub/m.txt" {
+	if child.view.Mode != Diff || child.view.Text.Left != "a\n" || child.view.Text.Right != "" || child.view.Title != "sub/m.txt" {
 		t.Errorf("deleted file: %+v", child)
 	}
-	if child, err := s.EntrySession("sub"); err != nil || child.Text.Right != "now a file\n" || child.Text.Left != "" {
+	if child, err := s.Entry("sub"); err != nil || child.view.Text.Right != "now a file\n" || child.view.Text.Left != "" {
 		t.Errorf("added file: %+v, %v", child, err)
 	}
 	for path, want := range map[string]error{
@@ -433,14 +78,37 @@ func TestEntrySession(t *testing.T) {
 		"big.txt": ErrCannotOpen,
 		"loop":    ErrCannotOpen,
 	} {
-		if _, err := s.EntrySession(path); !errors.Is(err, want) {
-			t.Errorf("EntrySession(%s) = %v, want %v", path, err, want)
+		if _, err := s.Entry(path); !errors.Is(err, want) {
+			t.Errorf("Entry(%s) = %v, want %v", path, err, want)
 		}
 	}
-	if _, err := s.EntrySession("nope"); err == nil {
-		t.Error("EntrySession(unknown path) succeeded")
+	if _, err := s.Entry("nope"); err == nil {
+		t.Error("Entry(unknown path) succeeded")
 	}
-	if _, err := NewScratch().EntrySession("x"); !errors.Is(err, ErrNotDirDiff) {
-		t.Errorf("EntrySession in scratch mode: %v, want ErrNotDirDiff", err)
+}
+
+func TestExitCode(t *testing.T) {
+	type call struct {
+		code int
+		quit bool
+	}
+	normal := map[call]int{{0, false}: 0, {0, true}: 0, {1, true}: 1, {2, true}: 2}
+	tests := []struct {
+		name string
+		sess Session
+		want map[call]int
+	}{
+		{"diff", &DiffSession{}, normal},
+		{"scratch", &ScratchSession{}, normal},
+		{"dirdiff", &DirDiffSession{}, normal},
+		// Closing a merge without Save (no Quit) is a cancel.
+		{"merge", &MergeSession{}, map[call]int{{0, false}: 1, {0, true}: 0, {1, true}: 1, {2, true}: 2}},
+	}
+	for _, tt := range tests {
+		for c, want := range tt.want {
+			if got := tt.sess.ExitCode(c.code, c.quit); got != want {
+				t.Errorf("%s: ExitCode(%d, %v) = %d, want %d", tt.name, c.code, c.quit, got, want)
+			}
+		}
 	}
 }
