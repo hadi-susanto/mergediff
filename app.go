@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hadi-susanto/mergediff/internal/command"
 	"github.com/hadi-susanto/mergediff/internal/config"
 	"github.com/hadi-susanto/mergediff/internal/diff"
 	"github.com/hadi-susanto/mergediff/internal/dirdiff"
@@ -41,9 +42,9 @@ const closeAckTimeout = 2 * time.Second
 func newApp(sess *session.Session) *App {
 	// Closing the window without an explicit Quit: a diff ends normally, a
 	// merge counts as cancelled.
-	code := exitOK
+	code := command.ExitOK
 	if sess.Mode == session.Merge {
-		code = exitCancel
+		code = command.ExitCancel
 	}
 	return &App{sess: sess, exitCode: code, quit: func() {}}
 }
@@ -124,8 +125,8 @@ func (a *App) Save(result string) error {
 // Quit closes the window; the process then exits with code. Codes other
 // than 0, 1 and 2 are treated as 2.
 func (a *App) Quit(code int) {
-	if code != exitOK && code != exitCancel {
-		code = exitError
+	if code != command.ExitOK && code != command.ExitCancel {
+		code = command.ExitError
 	}
 	a.mu.Lock()
 	a.exitCode = code
@@ -194,16 +195,16 @@ func (a *App) code() int {
 	a.mu.Lock()
 	code := a.exitCode
 	a.mu.Unlock()
-	if a.sess.Mode != session.Resolve || code == exitError {
+	if a.sess.Mode != session.Resolve || code == command.ExitError {
 		return code
 	}
 	n, err := a.sess.Remaining()
 	switch {
 	case err != nil:
-		return exitError
+		return command.ExitError
 	case n > 0:
-		return exitCancel
+		return command.ExitCancel
 	default:
-		return exitOK
+		return command.ExitOK
 	}
 }

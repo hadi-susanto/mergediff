@@ -40,6 +40,12 @@ XWayland is unverified. The app itself is not X11-specific.
 ## Files
 
 - `run.sh` — preflight checks, runs every script, overall status
+- `cli.sh` — the command line: `--help` / `--version` and the `help` /
+  `version` subcommands, usage errors (exit 2, message, usage on stderr,
+  nothing on stdout), `settings --help` and the window flags `settings`
+  rejects, one directory and one file, reserved words as file names
+  (`-- help version`, `./resolve`, not first) opening a diff, and
+  `-o M -- help L R` opening a merge
 - `mergetool.sh` — `git mergetool` on a real conflicting merge (LF and CRLF
   files): resolve and save (exit 0, file staged), "From Remote only",
   cancel and save-with-conflicts (Git keeps the conflict), `--auto-apply`

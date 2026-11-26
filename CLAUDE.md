@@ -42,16 +42,15 @@ Build **mergediff**: a lightweight, cross-platform, open-source **3-way merge** 
 ```
 mergediff/
   go.mod                  # module github.com/hadi-susanto/mergediff
-  main.go                 # Wiring only: parse CLI → application.New → window → app.Run → os.Exit(code);
+  main.go                 # Wiring only: cliargs.Parse → command.Select → Run(env) → os.Exit(code);
+                          #   report (errors → stderr, exit 2); runGUI (the window, Env.OpenWindow);
                           #   //go:embed all:frontend/dist
-  cli.go                  # Argument parsing, usage text, exit codes
   version.go              # versionDate / commit vars set via -ldflags, Version() string
   app.go                  # App: one window's state (session, exit code, close guard); thin adapters
   windows.go              # Windows: the bound Wails service; one App per window, child windows
   crash.go                # Crash report to stderr + crash log (see "Panics")
   console_windows.go      # Windows GUI binary: attach to the parent console for CLI output
   release_test.go         # Release workflow tag filter + scripts/ci checks
-  settings_cmd.go         # `mergediff settings ...` output and exit codes
   devargs.go              # Dev builds only (!production): sample file args for wails3 dev,
                           #   MERGEDIFF_DEV_DIR to run in a directory (make dev-resolve)
   testdata/dev/           # Sample files opened by `make dev`; dirdiff/{left,right} for the directory
@@ -60,6 +59,11 @@ mergediff/
   build/                  # Wails build assets (user-owned): config.yml, icons, per-OS Taskfiles,
                           #   Info.plist, Windows manifest. Local edits listed in "Wails v3 setup".
   internal/
+    cliargs/              # Command-line tokenizer: flags (one table) and positionals → immutable Option
+    command/              # The commands: Select (reserved words, --), one file per command
+                          #   (help, version, settings, diff, scratch, merge, resolve), Env, usage text,
+                          #   exit codes; window.go loads settings and opens the window via Env
+    testrepo/             # Tests only: a Git repository stopped by a conflicted merge
     config/               # Settings registry, TOML config file, flag/file/default layering
     session/              # Builds a Session from CLI paths (load, detect, merge); scratch Compare;
                           #   directory comparison in the background (StartDirDiff, LoadPair);
@@ -113,6 +117,7 @@ mergediff/
   GIT.md                  # Git integration: mergetool, difftool, difftool -d, resolve (linked from README)
   01-directory-diff.md    # Feature 1 instructions (done)
   02-resolve-conflicts.md # Feature 2 instructions (done)
+  03-refactor.md          # Refactor 1 instructions: command line (done)
 ```
 
 ### Wails v3 setup
@@ -157,8 +162,11 @@ Standard Wails v3 project layout: `package main` at the repo root, built by
 
 Rules for the root `main` package:
 
-- Only startup and wiring: parse args, build dependencies, configure and run
-  Wails, map errors to exit codes.
+- Only startup and wiring: `run(args, env)` parses the arguments
+  (`cliargs.Parse`), picks the command (`command.Select`), runs it with the
+  real `command.Env` and exits with its code; `report` maps errors to output
+  and exit `2`. `runGUI` configures and runs Wails and is the Env's
+  `OpenWindow`. Command logic lives in `internal/command`, not here.
 - `App` methods are thin adapters that call `internal/...` packages; no
   diff/merge logic lives in the root package.
 - `internal/` packages must not import Wails, so they stay testable with plain
@@ -177,18 +185,45 @@ mergediff resolve [--auto-apply] [--] [PATH...]
                                        # Conflicts window for the Git working tree containing the cwd
 mergediff settings [list | get KEY | set KEY VALUE | unset KEY | path]
                                        # view or change the config file (no window)
+mergediff help [settings | resolve]      # general usage, or the settings usage
+mergediff version                        # same as --version
 mergediff --help | --version            # --version prints e.g. "mergediff 2026-11-19 (a1b2c3d)"
 ```
 
 Every setting with `Flag: true` in the registry is also a flag, valid with any
 window mode: `--theme system|light|dark`, `--window-state normal|maximized`
-(`--KEY VALUE` or `--KEY=VALUE`). `settings` and `resolve` are subcommands
-only as the first argument; `./settings` or `-- settings` names a file.
-`resolve` takes `--auto-apply` (passed to every merge window it opens),
-settings flags and `PATH...` limits relative to the cwd; `-o` is a usage
-error.
+(`--KEY VALUE` or `--KEY=VALUE`).
 
-Parse arguments in `cli.go`, called from `main()` **before** starting Wails, so bad arguments print usage and exit without opening a window.
+**Reserved words** — `help`, `version`, `settings`, `resolve` — are
+subcommands when they are the first positional argument **before `--`**
+(options may come first: `--theme dark settings list` is the settings
+command). For a file with such a name, put `--` before the paths (preferred,
+options go before it: `mergediff -o M -- help L R`) or write `./help`. A
+subcommand handles `--help` / `--version` itself: `settings --help` is the
+settings usage, `resolve --help` the general usage, `resolve --version` the
+version. Without a subcommand `--help` wins, then `--version`, then the
+number of paths (3 merge, 2 diff, 0 scratch).
+
+- `resolve` takes `--auto-apply` (passed to every merge window it opens),
+  settings flags and `PATH...` limits relative to the cwd; `-o` is a usage
+  error.
+- `settings` rejects `-o`, `--auto-apply`, `--version` and settings flags
+  (pointing at `settings set`). `help` takes one topic at most and no window
+  flags; `version` takes no arguments.
+
+Arguments are parsed in two steps, both **before** starting Wails, so bad
+arguments print usage and exit without opening a window:
+
+- `internal/cliargs` tokenizes: one flag table (`-o`/`--output`,
+  `--auto-apply`, `-h`/`--help`, `-v`/`--version`, the registry's settings
+  flags; unknown flags are errors, a new flag is a new table entry), the
+  positionals in order, and where `--` was. `Option` is immutable
+  (unexported fields, getters return copies). It knows nothing about
+  commands.
+- `internal/command.Select` picks the command and each command's
+  constructor checks its arguments; `Run(env)` does the work. Commands use
+  `Env` (stdout/stderr, Getwd, ConfigPath, Version, OpenWindow) instead of
+  globals, never import Wails, and live one per file.
 
 Exit codes:
 
@@ -328,12 +363,16 @@ libraries; adding one needs approval like any other dependency.
   message text.
 - Handle each error once: return it **or** log it, not both.
 - `internal/` packages return errors and never print, log, call `os.Exit`, or
-  panic on bad input. Panics are only for programmer bugs (broken invariants).
+  panic on bad input. (Exception: `internal/command` writes a command's
+  normal output, such as help text or the settings table, to `Env.Stdout`.) Panics are only for programmer bugs (broken invariants).
 
 ### Exit codes and user-facing messages
 
-- Only the root `main` package turns errors into output and exit codes:
-  - usage errors → usage text + exit `2`
+- Commands return `(code, err)`. Only the root `main` package (`report`)
+  turns errors into output and exit code `2`:
+  - usage errors (`*cliargs.UsageError`, `*command.UsageError`) →
+    `mergediff: <message>`, a blank line and the usage text (the command's
+    own, e.g. the settings usage, or the general one) + exit `2`
   - I/O, binary (`textio.ErrBinary`), invalid UTF-8 (`textio.ErrNotUTF8`)
     → `mergediff: <wrapped message>` on stderr, exit `2`
 - Errors from bound `App` methods reach the frontend as rejected promises.
@@ -753,6 +792,18 @@ Note: the Makefile's `build`, `test`, `check` and `version` targets are useful e
 3. Merge… and Show changes in child windows, locks, the unsaved-edits
    guard, "edited since Git stopped", the all-resolved banner.
 4. Full e2e, README / SCREENSHOT.md, GIT.md, this file.
+
+### Refactor 1 — Command line (03-refactor.md, done)
+
+1. `scripts/e2e/cli.sh` pinning the command line before the change;
+   `internal/cliargs` (tokenizer, immutable `Option`).
+2. `internal/command`: `Command`, `Env`, `UsageError`, exit codes; Help,
+   Version, Settings, Diff (files or directories), Scratch, Merge, Resolve;
+   `Select`. `internal/testrepo`.
+3. `main.go` runs through cliargs and command; `cli.go` and
+   `settings_cmd.go` removed; `help` / `version` subcommands and reserved
+   words in cli.sh, README, the usage text and this file. Next: moving the
+   GUI (`app.go`, `windows.go`) to `internal/gui`.
 
 ## Useful commands
 

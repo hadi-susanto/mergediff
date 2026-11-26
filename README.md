@@ -90,11 +90,26 @@ mergediff LEFTDIR RIGHTDIR                              directory diff (git diff
 mergediff resolve [--auto-apply] [--] [PATH...]         conflicts of a stopped merge, in this repository
 mergediff                                               scratch diff of pasted text
 mergediff settings [list | get KEY | set KEY VALUE | unset KEY | path]
+mergediff help [settings]                               this help, or the settings commands
+mergediff version                                       same as --version
 mergediff --help | --version
 ```
 
 Any window can also take `--theme system|light|dark` and
 `--window-state normal|maximized` (see [Settings](#settings)).
+
+`help`, `version`, `settings` and `resolve` are **reserved words**: as the
+first path they name a command, not a file. To use a file with one of these
+names, put `--` before the paths (preferred) or write `./help`:
+
+```sh
+mergediff -- help other.txt              # diff of the files "help" and "other.txt"
+mergediff -o MERGED -- help local remote # options go before "--"
+```
+
+Everything after `--` is a path, so options such as `-o` must come before it.
+Git's `mergetool` / `difftool` commands pass temporary file names, so they
+are not affected.
 
 - **Merge:** the Result pane starts with the BASE text. Apply changes with the
   gutter buttons, or all non-conflicting ones with *✦ Apply non-conflicting
@@ -230,7 +245,10 @@ invalid value is an error (exit `2`, naming the file), so typos don't go
 unnoticed. On Linux the window's title bar keeps the system theme; the
 content follows the setting.
 
-To compare a file literally named `settings`, write `./settings`.
+`mergediff settings` itself does not take `--theme` or `--window-state`
+(it tells you the `settings set` command instead); `mergediff help settings`
+lists its commands. To compare a file named `settings`, see
+[reserved words](#usage).
 
 ## Git integration
 
