@@ -13,6 +13,14 @@ func TestUsageListsSettingsFlags(t *testing.T) {
 	}
 }
 
+func TestUsageExplainsReservedWords(t *testing.T) {
+	for _, want := range []string{"help, version, settings and resolve are reserved words", "mergediff -- help other.txt", "mergediff -o MERGED -- help local remote"} {
+		if !strings.Contains(Usage, want) {
+			t.Errorf("usage is missing %q", want)
+		}
+	}
+}
+
 func TestHelp(t *testing.T) {
 	tests := []struct {
 		args []string // after "help"

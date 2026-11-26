@@ -17,9 +17,15 @@ var Usage = `Usage:
   mergediff resolve [--auto-apply] [--] [PATH...]         list Git's merge conflicts and resolve them
   mergediff settings [list | get KEY | set KEY VALUE | unset KEY | path]
                                                           view or change saved settings
-  mergediff --help | --version
+  mergediff help [settings]                               this help, or the settings commands
+  mergediff version | --version                           print the version
+  mergediff --help
 
-To compare a file named "settings" or "resolve", write ./settings or ./resolve.
+help, version, settings and resolve are reserved words: as the first path
+they name a command. For a file with one of these names, put -- before the
+paths (preferred) or write ./NAME; options go before --:
+  mergediff -- help other.txt
+  mergediff -o MERGED -- help local remote
 resolve lists the conflicts under PATH... (relative to the current directory),
 or all of the repository's.
 
