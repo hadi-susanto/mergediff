@@ -4,9 +4,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/hadi-susanto/mergediff/internal/command"
+	"github.com/hadi-susanto/mergediff/internal/gitconflict"
 	"github.com/hadi-susanto/mergediff/internal/session"
 )
 
@@ -33,7 +35,7 @@ func fakeWindows() (*Windows, map[string]*fakeWindow, *int) {
 	w := newWindows()
 	created := map[string]*fakeWindow{}
 	quits := 0
-	w.newWindow = func(name string, _ *session.Session, _ *window) windowHandle {
+	w.newWindow = func(name string, _ session.Session, _ *window) windowHandle {
 		f := &fakeWindow{name: name, wins: w}
 		created[name] = f
 		return f
@@ -42,7 +44,21 @@ func fakeWindows() (*Windows, map[string]*fakeWindow, *int) {
 	return w, created, &quits
 }
 
-func diffSession() *session.Session { return &session.Session{View: session.View{Mode: session.Diff}} }
+// fakeSession is a session.Session with a fixed View. Its ExitCode
+// records its arguments and returns the code.
+type fakeSession struct {
+	view          session.View
+	gotCode       int
+	gotQuit, used bool
+}
+
+func (f *fakeSession) View() session.View { return f.view }
+func (f *fakeSession) ExitCode(code int, quit bool) int {
+	f.gotCode, f.gotQuit, f.used = code, quit, true
+	return code
+}
+
+func diffSession() *fakeSession { return &fakeSession{view: session.View{Mode: session.Diff}} }
 
 func TestWindowsOpenChild(t *testing.T) {
 	w, created, _ := fakeWindows()
@@ -130,7 +146,7 @@ func TestWindowsChildDoesNotAffectMainExitCode(t *testing.T) {
 		}
 		return p
 	}
-	load := func(out string) *session.Session {
+	load := func(out string) *session.MergeSession {
 		s, err := session.LoadMerge(write("base", "a\n"), write("local", "b\n"), write("remote", "c\n"), filepath.Join(dir, out), false)
 		if err != nil {
 			t.Fatal(err)
@@ -154,7 +170,7 @@ func TestWindowsChildDoesNotAffectMainExitCode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := child.sess.Save("merged\n"); err != nil {
+	if err := child.sess.(*session.MergeSession).Save("merged\n"); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := os.ReadFile(filepath.Join(dir, "child1.out")); err != nil || string(got) != "merged\n" {
@@ -207,8 +223,8 @@ func TestWindowsOpenEntry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := *child.sess
-	if s.Mode != session.Diff || s.Text.Left != "a\n" || s.Text.Right != "b\n" || s.Title != "m.txt" {
+	s := child.sess.View()
+	if _, ok := child.sess.(*session.DiffSession); !ok || s.Text.Left != "a\n" || s.Text.Right != "b\n" || s.Title != "m.txt" {
 		t.Errorf("child session = %+v", s)
 	}
 
@@ -225,5 +241,35 @@ func TestWindowsOpenEntry(t *testing.T) {
 	}
 	if len(created) != 2 {
 		t.Errorf("a refused file opened a window (%d windows)", len(created))
+	}
+}
+
+// TestWrongModeCalls: a window asking for what its session does not serve
+// gets errWrongMode naming the call, and no window opens.
+func TestWrongModeCalls(t *testing.T) {
+	w, created, _ := fakeWindows()
+	win := newWindowState(diffSession())
+	w.openMain(win)
+	for name, call := range map[string]func() error{
+		"OpenEntry":   func() error { return w.openEntry(mainWindowName, win, "a.txt") },
+		"OpenMerge":   func() error { return w.openMerge(mainWindowName, win, "a.txt") },
+		"ShowChanges": func() error { return w.showChanges(mainWindowName, win, "a.txt") },
+		"AcceptSide": func() error {
+			_, err := w.acceptSide(mainWindowName, win, []string{"a.txt"}, gitconflict.Yours)
+			return err
+		},
+	} {
+		if err := call(); !errors.Is(err, errWrongMode) || !strings.HasPrefix(err.Error(), name+": ") {
+			t.Errorf("%s from a diff window = %v, want errWrongMode naming it", name, err)
+		}
+	}
+	if len(created) != 1 {
+		t.Errorf("windows created: %d, want only the main one", len(created))
+	}
+	if _, err := as[*session.MergeSession](win, "Save"); !errors.Is(err, errWrongMode) {
+		t.Errorf("Save from a diff window = %v, want errWrongMode", err)
+	}
+	if _, err := as[*session.DirDiffSession](win, "DirEntries"); !errors.Is(err, errWrongMode) {
+		t.Errorf("DirEntries from a diff window = %v, want errWrongMode", err)
 	}
 }

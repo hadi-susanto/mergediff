@@ -13,11 +13,12 @@ import (
 // close guard and unsaved-edits flag. The bound methods (api.go) find the
 // calling window's state in the registry and use its session directly.
 type window struct {
-	sess     *session.Session
+	sess     session.Session
 	settings map[string]string // effective settings, keyed by config key
 
 	mu       sync.Mutex
-	exitCode int
+	exitCode int    // what Quit set; 0 until then
+	quitted  bool   // Quit was called
 	quit     func() // closes the application; set once Wails is created
 
 	// Close guard (see GuardClose): while on, the window's close button asks
@@ -34,14 +35,8 @@ type window struct {
 // responding, so the window can never get stuck.
 const closeAckTimeout = 2 * time.Second
 
-func newWindowState(sess *session.Session) *window {
-	// Closing the window without an explicit Quit: a diff ends normally, a
-	// merge counts as cancelled.
-	code := command.ExitOK
-	if sess.Mode == session.Merge {
-		code = command.ExitCancel
-	}
-	return &window{sess: sess, exitCode: code, quit: func() {}}
+func newWindowState(sess session.Session) *window {
+	return &window{sess: sess, quit: func() {}}
 }
 
 // settingValues returns the effective settings (config file and
@@ -61,6 +56,7 @@ func (win *window) Quit(code int) {
 	}
 	win.mu.Lock()
 	win.exitCode = code
+	win.quitted = true
 	win.guarded = false
 	quit := win.quit
 	win.mu.Unlock()
@@ -115,22 +111,12 @@ func (win *window) interceptClose(now time.Time) bool {
 	return true
 }
 
-// code is the exit code once the window has closed. A resolve session
-// asks Git: 0 if no conflicts are left within its paths, else 1.
+// code is the exit code once the window has closed. The session decides
+// (session.Session.ExitCode): e.g. a merge closed without Save is a
+// cancel, and a Conflicts window asks Git.
 func (win *window) code() int {
 	win.mu.Lock()
-	code := win.exitCode
+	code, quitted := win.exitCode, win.quitted
 	win.mu.Unlock()
-	if win.sess.Mode != session.Resolve || code == command.ExitError {
-		return code
-	}
-	n, err := win.sess.Remaining()
-	switch {
-	case err != nil:
-		return command.ExitError
-	case n > 0:
-		return command.ExitCancel
-	default:
-		return command.ExitOK
-	}
+	return win.sess.ExitCode(code, quitted)
 }

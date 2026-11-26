@@ -76,7 +76,7 @@ export interface MergeView {
 }
 
 /**
- * Mode is the kind of session.
+ * Mode is the kind of session, for the frontend to pick its view.
  */
 export enum Mode {
     /**

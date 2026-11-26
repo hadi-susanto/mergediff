@@ -46,9 +46,9 @@ func TestWindowsAcceptSideRefusesOpenMergeWindows(t *testing.T) {
 		!strings.Contains(err.Error(), "a.txt") {
 		t.Errorf("accept with a merge window open = %v, want errMergeOpen naming a.txt", err)
 	}
-	// Not locked: reaches the session (a diff session refuses it).
-	if _, err := w.acceptSide(mainWindowName, win, []string{"b.txt"}, gitconflict.Yours); !errors.Is(err, session.ErrNotResolve) {
-		t.Errorf("accept without a lock = %v, want the session's ErrNotResolve", err)
+	// Not locked: reaches the session check (a diff window cannot accept).
+	if _, err := w.acceptSide(mainWindowName, win, []string{"b.txt"}, gitconflict.Yours); !errors.Is(err, errWrongMode) {
+		t.Errorf("accept without a lock = %v, want errWrongMode", err)
 	}
 }
 
@@ -61,9 +61,9 @@ func TestWindowsOpenMerge(t *testing.T) {
 	w, created, _ := fakeWindows()
 	var events []string
 	w.emit = func(e string) { events = append(events, e) }
-	var opened []*session.Session
+	var opened []session.Session
 	inner := w.newWindow
-	w.newWindow = func(name string, sess *session.Session, win *window) windowHandle {
+	w.newWindow = func(name string, sess session.Session, win *window) windowHandle {
 		opened = append(opened, sess)
 		return inner(name, sess, win)
 	}
@@ -74,7 +74,7 @@ func TestWindowsOpenMerge(t *testing.T) {
 	if err := w.openMerge(mainWindowName, win, "a.txt"); err != nil {
 		t.Fatal(err)
 	}
-	if len(opened) != 2 || opened[1].Mode != session.Merge || opened[1].Text.LeftLabel != "main" {
+	if _, ok := opened[len(opened)-1].(*session.MergeSession); len(opened) != 2 || !ok || opened[1].View().Text.LeftLabel != "main" {
 		t.Fatalf("merge window session = %+v", opened[len(opened)-1])
 	}
 	if len(events) != 1 || events[0] != changed {
@@ -100,7 +100,7 @@ func TestWindowsOpenMerge(t *testing.T) {
 	if got := w.openMerges(mainWindowName, true); len(got) != 1 {
 		t.Errorf("unsaved after an edit = %v", got)
 	}
-	if err := child.sess.Save("merged\n"); err != nil {
+	if err := child.sess.(*session.MergeSession).Save("merged\n"); err != nil {
 		t.Fatal(err)
 	}
 	created["child-1"].Close()

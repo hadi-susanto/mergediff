@@ -20,22 +20,21 @@ func writeFile(t *testing.T, dir, name, content string) string {
 	return p
 }
 
+// TestWindowExitCodes: the window passes what Quit set to the session,
+// which decides (session.Session.ExitCode).
 func TestWindowExitCodes(t *testing.T) {
-	diffSess := &session.Session{View: session.View{Mode: session.Diff}}
-	mergeSess := &session.Session{View: session.View{Mode: session.Merge}}
-	if c := newWindowState(diffSess).code(); c != command.ExitOK {
-		t.Errorf("diff default code %d, want 0", c)
-	}
-	if c := newWindowState(mergeSess).code(); c != command.ExitCancel {
-		t.Errorf("merge default code %d, want 1", c)
+	f := diffSession()
+	if c := newWindowState(f).code(); c != command.ExitOK || f.gotCode != 0 || f.gotQuit {
+		t.Errorf("closed without Quit: code %d, session asked with (%d, %v); want 0, (0, false)", c, f.gotCode, f.gotQuit)
 	}
 	for in, want := range map[int]int{0: 0, 1: 1, 2: 2, 5: 2, -1: 2} {
-		win := newWindowState(mergeSess)
+		f := diffSession()
+		win := newWindowState(f)
 		quits := 0
 		win.quit = func() { quits++ }
 		win.Quit(in)
-		if win.code() != want || quits != 1 {
-			t.Errorf("Quit(%d): code %d quits %d, want code %d and one quit", in, win.code(), quits, want)
+		if win.code() != want || quits != 1 || !f.gotQuit {
+			t.Errorf("Quit(%d): code %d quits %d quit seen %v, want code %d, one quit, seen", in, win.code(), quits, f.gotQuit, want)
 		}
 	}
 }
@@ -51,7 +50,7 @@ func TestCharDiffNeverNil(t *testing.T) {
 }
 
 func TestCloseGuard(t *testing.T) {
-	win := newWindowState(&session.Session{View: session.View{Mode: session.Merge}})
+	win := newWindowState(diffSession())
 	t0 := time.Date(2026, 11, 21, 10, 0, 0, 0, time.UTC)
 
 	if win.interceptClose(t0) {
@@ -91,7 +90,7 @@ func TestCloseGuard(t *testing.T) {
 }
 
 func TestWindowSettings(t *testing.T) {
-	win := newWindowState(&session.Session{View: session.View{Mode: session.Diff}})
+	win := newWindowState(diffSession())
 	if got := win.settingValues(); got[config.KeyTheme] != config.ThemeSystem || got[config.KeyWindowState] != config.WindowNormal {
 		t.Errorf("defaults: %v", got)
 	}

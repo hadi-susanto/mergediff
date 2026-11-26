@@ -10,9 +10,9 @@ import (
 )
 
 // windowOptions configures a window from its session and the settings.
-func windowOptions(sess *session.Session, cfg config.Config) application.WebviewWindowOptions {
+func windowOptions(sess session.Session, cfg config.Config) application.WebviewWindowOptions {
 	opts := application.WebviewWindowOptions{
-		Title:  "mergediff — " + sess.Title,
+		Title:  "mergediff — " + sess.View().Title,
 		Width:  1400,
 		Height: 900,
 		// The theme is in the URL so index.html can apply it before the

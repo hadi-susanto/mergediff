@@ -38,7 +38,7 @@ type Options struct {
 
 // Run opens the main window showing sess and blocks until the application
 // ends, returning the process exit code.
-func Run(sess *session.Session, cfg config.Config, opts Options) int {
+func Run(sess session.Session, cfg config.Config, opts Options) int {
 	win := newWindowState(sess)
 	win.settings = cfg.Values()
 	wins := newWindows()
@@ -69,7 +69,7 @@ func Run(sess *session.Session, cfg config.Config, opts Options) int {
 	wins.settings = win.settings
 	wins.version = opts.Version
 	wins.emit = func(event string) { wails.Event.Emit(event) }
-	wins.newWindow = func(name string, sess *session.Session, win *window) windowHandle {
+	wins.newWindow = func(name string, sess session.Session, win *window) windowHandle {
 		wopts := windowOptions(sess, cfg)
 		wopts.Name = name
 		wv := wails.Window.NewWithOptions(wopts)

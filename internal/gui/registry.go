@@ -49,7 +49,7 @@ type Windows struct {
 
 	// newWindow creates the window name showing sess. Set by Run;
 	// tests fake it.
-	newWindow func(name string, sess *session.Session, win *window) windowHandle
+	newWindow func(name string, sess session.Session, win *window) windowHandle
 	// quitApp ends the application; called when the main window closes.
 	quitApp func()
 	// settings are the effective settings, given to every child window.
@@ -63,7 +63,7 @@ type Windows struct {
 func newWindows() *Windows {
 	return &Windows{
 		wins:      map[string]*winEntry{},
-		newWindow: func(name string, _ *session.Session, _ *window) windowHandle { return nopWindow(name) },
+		newWindow: func(name string, _ session.Session, _ *window) windowHandle { return nopWindow(name) },
 		quitApp:   func() {},
 		emit:      func(string) {},
 	}
@@ -89,7 +89,7 @@ func (w *Windows) openMain(win *window) windowHandle {
 // window shows: if parent already has a window for key, that window is
 // focused instead and sess is dropped. A child's state closes only its own
 // window and its exit code is ignored.
-func (w *Windows) openChild(parent, key string, sess *session.Session) error {
+func (w *Windows) openChild(parent, key string, sess session.Session) error {
 	w.mu.Lock()
 	if _, ok := w.wins[parent]; !ok {
 		w.mu.Unlock()
@@ -151,7 +151,11 @@ func (w *Windows) openEntry(parent string, win *window, path string) error {
 	if w.focusChild(parent, key) {
 		return nil
 	}
-	sess, err := win.sess.EntrySession(path)
+	dir, err := as[*session.DirDiffSession](win, "OpenEntry")
+	if err != nil {
+		return err
+	}
+	sess, err := dir.Entry(path)
 	if err != nil {
 		return err
 	}
@@ -170,7 +174,11 @@ func (w *Windows) openMerge(parent string, win *window, path string) error {
 	if w.focusChild(parent, mergeKey(path)) {
 		return nil
 	}
-	sess, err := win.sess.MergeSession(path)
+	res, err := as[*session.ResolveSession](win, "OpenMerge")
+	if err != nil {
+		return err
+	}
+	sess, err := res.Merge(path)
 	if err != nil {
 		return err
 	}
@@ -188,7 +196,11 @@ func (w *Windows) showChanges(parent string, win *window, path string) error {
 	if w.focusChild(parent, key) {
 		return nil
 	}
-	sess, err := win.sess.ChangesSession(path)
+	res, err := as[*session.ResolveSession](win, "ShowChanges")
+	if err != nil {
+		return err
+	}
+	sess, err := res.Changes(path)
 	if err != nil {
 		return err
 	}
@@ -232,7 +244,11 @@ func (w *Windows) acceptSide(parent string, win *window, paths []string, side gi
 		}
 	}
 	w.mu.Unlock()
-	return win.sess.Accept(paths, side)
+	res, err := as[*session.ResolveSession](win, "AcceptSide")
+	if err != nil {
+		return session.ConflictList{}, err
+	}
+	return res.Accept(paths, side)
 }
 
 // create makes the window for the registered entry name.

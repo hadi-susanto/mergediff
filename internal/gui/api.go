@@ -2,6 +2,8 @@ package gui
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/hadi-susanto/mergediff/internal/diff"
 	"github.com/hadi-susanto/mergediff/internal/dirdiff"
@@ -9,6 +11,22 @@ import (
 	"github.com/hadi-susanto/mergediff/internal/merge"
 	"github.com/hadi-susanto/mergediff/internal/session"
 )
+
+// errWrongMode is returned for a bound call the calling window's kind of
+// session does not serve, e.g. DirEntries from a merge window. The
+// frontend never makes such calls.
+var errWrongMode = errors.New("not available in this window")
+
+// as returns the calling window's session as a T, or errWrongMode naming
+// method.
+func as[T session.Session](win *window, method string) (T, error) {
+	s, ok := win.sess.(T)
+	if !ok {
+		var zero T
+		return zero, fmt.Errorf("%s: %w", method, errWrongMode)
+	}
+	return s, nil
+}
 
 // The exported methods below are bound to the frontend. Each one finds the
 // calling window's state and uses its session; the leading context is
@@ -20,7 +38,7 @@ func (w *Windows) LoadSession(ctx context.Context) (session.View, error) {
 	if err != nil {
 		return session.View{}, err
 	}
-	return win.sess.View, nil
+	return win.sess.View(), nil
 }
 
 // DirEntries waits for the calling window's directory comparison and
@@ -30,7 +48,11 @@ func (w *Windows) DirEntries(ctx context.Context) ([]dirdiff.Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	entries, err := win.sess.DirEntries()
+	dir, err := as[*session.DirDiffSession](win, "DirEntries")
+	if err != nil {
+		return nil, err
+	}
+	entries, err := dir.DirEntries()
 	if err == nil && entries == nil {
 		entries = []dirdiff.Entry{}
 	}
@@ -44,7 +66,11 @@ func (w *Windows) DirStats(ctx context.Context) (dirdiff.StatsBatch, error) {
 	if err != nil {
 		return dirdiff.StatsBatch{}, err
 	}
-	return win.sess.DirStats()
+	dir, err := as[*session.DirDiffSession](win, "DirStats")
+	if err != nil {
+		return dirdiff.StatsBatch{}, err
+	}
+	return dir.DirStats()
 }
 
 // DirProgress reports how far the calling window's directory comparison got.
@@ -53,7 +79,11 @@ func (w *Windows) DirProgress(ctx context.Context) (dirdiff.Snapshot, error) {
 	if err != nil {
 		return dirdiff.Snapshot{}, err
 	}
-	return win.sess.DirProgress(), nil
+	dir, err := as[*session.DirDiffSession](win, "DirProgress")
+	if err != nil {
+		return dirdiff.Snapshot{}, err
+	}
+	return dir.DirProgress(), nil
 }
 
 // OpenEntry opens a file of the calling window's directory comparison
@@ -74,7 +104,11 @@ func (w *Windows) Conflicts(ctx context.Context) (session.ConflictList, error) {
 	if err != nil {
 		return session.ConflictList{}, err
 	}
-	list, err := win.sess.Conflicts()
+	res, err := as[*session.ResolveSession](win, "Conflicts")
+	if err != nil {
+		return session.ConflictList{}, err
+	}
+	list, err := res.Conflicts()
 	list.Open = w.openMerges(name, false)
 	return list, err
 }
@@ -139,7 +173,11 @@ func (w *Windows) MergeCounts(ctx context.Context, path string) (session.MergeCo
 	if err != nil {
 		return session.MergeCounts{}, err
 	}
-	return win.sess.MergeCounts(path)
+	res, err := as[*session.ResolveSession](win, "MergeCounts")
+	if err != nil {
+		return session.MergeCounts{}, err
+	}
+	return res.MergeCounts(path)
 }
 
 // Edited returns those of paths (conflicts of the calling window) whose
@@ -149,7 +187,11 @@ func (w *Windows) Edited(ctx context.Context, paths []string) ([]string, error) 
 	if err != nil {
 		return nil, err
 	}
-	return win.sess.Edited(paths)
+	res, err := as[*session.ResolveSession](win, "Edited")
+	if err != nil {
+		return nil, err
+	}
+	return res.Edited(paths)
 }
 
 // Save writes the calling window's merge result.
@@ -158,7 +200,11 @@ func (w *Windows) Save(ctx context.Context, result string) error {
 	if err != nil {
 		return err
 	}
-	return win.sess.Save(result)
+	m, err := as[*session.MergeSession](win, "Save")
+	if err != nil {
+		return err
+	}
+	return m.Save(result)
 }
 
 // Quit closes the calling window. For the main window the process then
