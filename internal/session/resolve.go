@@ -86,13 +86,9 @@ func StartResolve(dir string, paths []string, autoApply bool) (*Session, error) 
 		return nil, ErrNoConflicts
 	}
 	return &Session{
-		Mode:   Resolve,
-		Paths:  []string{repo.Top},
-		Title:  "Resolve conflicts · " + repo.Name(),
-		Chunks: []merge.Chunk{},
-		EOL:    textio.LF.Name(),
-		eol:    textio.LF,
-		res:    rs,
+		View: View{Mode: Resolve, Paths: []string{repo.Top}, Title: "Resolve conflicts · " + repo.Name()},
+		eol:  textio.LF,
+		res:  rs,
 	}, nil
 }
 
@@ -268,9 +264,9 @@ func (s *Session) MergeSession(path string) (*Session, error) {
 	}
 	abs := rs.repo.Abs(path)
 	m := newMerge(base, yours, theirs, []string{abs, abs, abs, abs}, path, abs, rs.autoApply)
-	m.LocalLabel = label(op.YoursLabel, "yours")
-	m.RemoteLabel = label(op.TheirsLabel, "theirs")
-	m.EditedOnDisk = edited
+	m.Text.LeftLabel = label(op.YoursLabel, "yours")
+	m.Text.RightLabel = label(op.TheirsLabel, "theirs")
+	m.Merge.EditedOnDisk = edited
 	repo := rs.repo
 	m.saveTo = func(text string, eol textio.EOL) error { return repo.SaveMerged(path, text, eol) }
 	return m, nil
@@ -310,18 +306,11 @@ func (s *Session) ChangesSession(path string) (*Session, error) {
 	}
 	abs := rs.repo.Abs(path)
 	eol := textio.DetectEOL(kept, base)
+	text := diffTexts(base.Text, kept.Text, Language(path), eol)
+	text.LeftLabel, text.RightLabel = "Base", name
 	return &Session{
-		Mode:        Diff,
-		Paths:       []string{abs, abs},
-		Title:       path + " · changes",
-		Local:       base.Text,
-		Remote:      kept.Text,
-		Chunks:      diffChunks(base.Text, kept.Text),
-		Language:    Language(path),
-		EOL:         eol.Name(),
-		LocalLabel:  "Base",
-		RemoteLabel: name,
-		eol:         eol,
+		View: View{Mode: Diff, Paths: []string{abs, abs}, Title: path + " · changes", Text: text},
+		eol:  eol,
 	}, nil
 }
 

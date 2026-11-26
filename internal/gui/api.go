@@ -14,13 +14,13 @@ import (
 // calling window's state and uses its session; the leading context is
 // supplied by Wails and does not appear in the generated bindings.
 
-// LoadSession returns the calling window's session.
-func (w *Windows) LoadSession(ctx context.Context) (session.Session, error) {
+// LoadSession returns what the calling window shows: its session's View.
+func (w *Windows) LoadSession(ctx context.Context) (session.View, error) {
 	win, err := w.caller(ctx)
 	if err != nil {
-		return session.Session{}, err
+		return session.View{}, err
 	}
-	return *win.sess, nil
+	return win.sess.View, nil
 }
 
 // DirEntries waits for the calling window's directory comparison and

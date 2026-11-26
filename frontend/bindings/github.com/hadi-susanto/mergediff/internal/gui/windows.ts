@@ -109,9 +109,9 @@ export function GuardClose(on: boolean): $CancellablePromise<void> {
 }
 
 /**
- * LoadSession returns the calling window's session.
+ * LoadSession returns what the calling window shows: its session's View.
  */
-export function LoadSession(): $CancellablePromise<session$0.Session> {
+export function LoadSession(): $CancellablePromise<session$0.View> {
     return $Call.ByID(1419500785);
 }
 

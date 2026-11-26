@@ -21,8 +21,8 @@ func writeFile(t *testing.T, dir, name, content string) string {
 }
 
 func TestWindowExitCodes(t *testing.T) {
-	diffSess := &session.Session{Mode: session.Diff}
-	mergeSess := &session.Session{Mode: session.Merge}
+	diffSess := &session.Session{View: session.View{Mode: session.Diff}}
+	mergeSess := &session.Session{View: session.View{Mode: session.Merge}}
 	if c := newWindowState(diffSess).code(); c != command.ExitOK {
 		t.Errorf("diff default code %d, want 0", c)
 	}
@@ -51,7 +51,7 @@ func TestCharDiffNeverNil(t *testing.T) {
 }
 
 func TestCloseGuard(t *testing.T) {
-	win := newWindowState(&session.Session{Mode: session.Merge})
+	win := newWindowState(&session.Session{View: session.View{Mode: session.Merge}})
 	t0 := time.Date(2026, 11, 21, 10, 0, 0, 0, time.UTC)
 
 	if win.interceptClose(t0) {
@@ -91,7 +91,7 @@ func TestCloseGuard(t *testing.T) {
 }
 
 func TestWindowSettings(t *testing.T) {
-	win := newWindowState(&session.Session{Mode: session.Diff})
+	win := newWindowState(&session.Session{View: session.View{Mode: session.Diff}})
 	if got := win.settingValues(); got[config.KeyTheme] != config.ThemeSystem || got[config.KeyWindowState] != config.WindowNormal {
 		t.Errorf("defaults: %v", got)
 	}

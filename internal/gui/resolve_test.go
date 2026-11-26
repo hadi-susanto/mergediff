@@ -74,7 +74,7 @@ func TestWindowsOpenMerge(t *testing.T) {
 	if err := w.openMerge(mainWindowName, win, "a.txt"); err != nil {
 		t.Fatal(err)
 	}
-	if len(opened) != 2 || opened[1].Mode != session.Merge || opened[1].LocalLabel != "main" {
+	if len(opened) != 2 || opened[1].Mode != session.Merge || opened[1].Text.LeftLabel != "main" {
 		t.Fatalf("merge window session = %+v", opened[len(opened)-1])
 	}
 	if len(events) != 1 || events[0] != changed {

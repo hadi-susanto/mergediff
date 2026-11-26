@@ -32,35 +32,10 @@ const (
 // ErrNotMerge is returned by Save in diff mode.
 var ErrNotMerge = errors.New("not a merge session")
 
-// Session is serialised to the frontend.
-//
-// In diff mode Local holds LEFT and Remote holds RIGHT, Base is empty, and
-// Chunks compare LEFT with RIGHT: they are Unchanged or RemoteOnly, and their
-// Base ranges equal their Local ranges.
+// Session is one window's session: the View the frontend gets, and what
+// the mode needs to serve its calls.
 type Session struct {
-	Mode  Mode     `json:"mode"`
-	Paths []string `json:"paths"` // merge: BASE, LOCAL, REMOTE, MERGED; diff, dirdiff: LEFT, RIGHT; resolve: the repository's top level
-	// Title names the file being merged or compared, for the window title.
-	Title         string        `json:"title"`
-	Base          string        `json:"base"`
-	Local         string        `json:"local"`
-	Remote        string        `json:"remote"`
-	Chunks        []merge.Chunk `json:"chunks"`
-	InitialResult string        `json:"initialResult"`
-	Language      string        `json:"language"` // from the file extension; "" if unknown
-	EOL           string        `json:"eol"`      // "LF" or "CRLF"; the style MERGED is written in
-	// AutoApplied reports that InitialResult already contains every
-	// non-conflicting chunk (--auto-apply), so the UI marks them applied.
-	AutoApplied bool `json:"autoApplied"`
-	// LocalLabel and RemoteLabel name the two sides in the pane headers
-	// when they are not files: branch names in a merge opened from the
-	// Conflicts window, "Base" and a branch in its Show changes diff.
-	// Empty means the headers show the file names.
-	LocalLabel  string `json:"localLabel"`
-	RemoteLabel string `json:"remoteLabel"`
-	// EditedOnDisk: the output file was edited since Git stopped (a merge
-	// opened from the Conflicts window), so saving asks first.
-	EditedOnDisk bool `json:"editedOnDisk"`
+	View
 
 	eol    textio.EOL
 	output string
@@ -84,15 +59,13 @@ func LoadDiff(left, right string) (*Session, error) {
 	}
 	eol := textio.DetectEOL(r, l)
 	return &Session{
-		Mode:     Diff,
-		Paths:    []string{left, right},
-		Title:    diffTitle(left, right),
-		Local:    l.Text,
-		Remote:   r.Text,
-		Chunks:   diffChunks(l.Text, r.Text),
-		Language: Language(right),
-		EOL:      eol.Name(),
-		eol:      eol,
+		View: View{
+			Mode:  Diff,
+			Paths: []string{left, right},
+			Title: diffTitle(left, right),
+			Text:  diffTexts(l.Text, r.Text, Language(right), eol),
+		},
+		eol: eol,
 	}, nil
 }
 
@@ -110,15 +83,13 @@ func LoadPair(left, right, title string) (*Session, error) {
 	}
 	eol := textio.DetectEOL(r, l)
 	return &Session{
-		Mode:     Diff,
-		Paths:    []string{left, right},
-		Title:    title,
-		Local:    l.Text,
-		Remote:   r.Text,
-		Chunks:   diffChunks(l.Text, r.Text),
-		Language: Language(title),
-		EOL:      eol.Name(),
-		eol:      eol,
+		View: View{
+			Mode:  Diff,
+			Paths: []string{left, right},
+			Title: title,
+			Text:  diffTexts(l.Text, r.Text, Language(title), eol),
+		},
+		eol: eol,
 	}, nil
 }
 
@@ -152,19 +123,21 @@ func newMerge(b, l, r textio.File, paths []string, title, output string, autoApp
 	}
 	eol := textio.DetectEOL(l, b)
 	return &Session{
-		Mode:          Merge,
-		Paths:         paths,
-		Title:         title,
-		Base:          b.Text,
-		Local:         l.Text,
-		Remote:        r.Text,
-		Chunks:        nonNil(chunks),
-		InitialResult: initial,
-		Language:      Language(output),
-		EOL:           eol.Name(),
-		AutoApplied:   autoApply,
-		eol:           eol,
-		output:        output,
+		View: View{
+			Mode:  Merge,
+			Paths: paths,
+			Title: title,
+			Text: &Texts{
+				Left:     l.Text,
+				Right:    r.Text,
+				Chunks:   nonNil(chunks),
+				Language: Language(output),
+				EOL:      eol.Name(),
+			},
+			Merge: &MergeView{Base: b.Text, InitialResult: initial, AutoApplied: autoApply},
+		},
+		eol:    eol,
+		output: output,
 	}
 }
 
@@ -234,13 +207,9 @@ func StartDirDiff(left, right string) (*Session, error) {
 		c.mu.Unlock()
 	}()
 	return &Session{
-		Mode:   DirDiff,
-		Paths:  []string{left, right},
-		Title:  "Compare directories",
-		Chunks: []merge.Chunk{},
-		EOL:    textio.LF.Name(),
-		eol:    textio.LF,
-		dir:    c,
+		View: View{Mode: DirDiff, Paths: []string{left, right}, Title: "Compare directories"},
+		eol:  textio.LF,
+		dir:  c,
 	}, nil
 }
 
@@ -309,12 +278,13 @@ func (s *Session) DirProgress() dirdiff.Snapshot {
 // NewScratch returns an empty scratch session (mergediff without arguments).
 func NewScratch() *Session {
 	return &Session{
-		Mode:   Scratch,
-		Paths:  []string{},
-		Title:  "scratch",
-		Chunks: []merge.Chunk{},
-		EOL:    textio.LF.Name(),
-		eol:    textio.LF,
+		View: View{
+			Mode:  Scratch,
+			Paths: []string{},
+			Title: "scratch",
+			Text:  &Texts{Chunks: []merge.Chunk{}, EOL: textio.LF.Name()},
+		},
+		eol: textio.LF,
 	}
 }
 
@@ -338,6 +308,11 @@ func Compare(left, right string) ([]merge.Chunk, error) {
 func diffChunks(left, right string) []merge.Chunk {
 	ll, rl := textio.SplitLines(left), textio.SplitLines(right)
 	return nonNil(merge.Merge(ll, ll, rl))
+}
+
+// diffTexts are the panes of a diff of LEFT and RIGHT (LF text).
+func diffTexts(left, right, language string, eol textio.EOL) *Texts {
+	return &Texts{Left: left, Right: right, Chunks: diffChunks(left, right), Language: language, EOL: eol.Name()}
 }
 
 func diffTitle(left, right string) string {

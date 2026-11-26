@@ -10,7 +10,7 @@ import (
 )
 
 func TestWindowOptions(t *testing.T) {
-	sess := &session.Session{Title: "x.go"}
+	sess := &session.Session{View: session.View{Title: "x.go"}}
 	cfg := config.Defaults()
 	o := windowOptions(sess, cfg)
 	if o.URL != "/?theme=system" {

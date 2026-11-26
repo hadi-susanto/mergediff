@@ -31,7 +31,7 @@ func TestDiffOpensWindow(t *testing.T) {
 	if code, err := runDiff(t, f, a, b); code != 7 || err != nil {
 		t.Fatalf("exit code %d, %v; want the window's code 7", code, err)
 	}
-	if s := f.opened; s == nil || s.Mode != session.Diff || s.Language != "go" {
+	if s := f.opened; s == nil || s.Mode != session.Diff || s.Text.Language != "go" {
 		t.Fatalf("diff session = %+v", s)
 	}
 }

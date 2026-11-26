@@ -56,6 +56,26 @@ export interface MergeCounts {
 }
 
 /**
+ * MergeView is what only a merge window has.
+ */
+export interface MergeView {
+    "base": string;
+    "initialResult": string;
+
+    /**
+     * AutoApplied reports that InitialResult already contains every
+     * non-conflicting chunk (--auto-apply), so the UI marks them applied.
+     */
+    "autoApplied": boolean;
+
+    /**
+     * EditedOnDisk: the output file was edited since Git stopped (a merge
+     * opened from the Conflicts window), so saving asks first.
+     */
+    "editedOnDisk": boolean;
+}
+
+/**
  * Mode is the kind of session.
  */
 export enum Mode {
@@ -85,29 +105,26 @@ export enum Mode {
 };
 
 /**
- * Session is serialised to the frontend.
- * 
- * In diff mode Local holds LEFT and Remote holds RIGHT, Base is empty, and
- * Chunks compare LEFT with RIGHT: they are Unchanged or RemoteOnly, and their
- * Base ranges equal their Local ranges.
+ * Texts are the two side panes: LEFT and RIGHT in a diff, LOCAL (yours)
+ * and REMOTE (theirs) in a merge.
  */
-export interface Session {
-    "mode": Mode;
+export interface Texts {
+    "left": string;
+    "right": string;
 
     /**
-     * merge: BASE, LOCAL, REMOTE, MERGED; diff, dirdiff: LEFT, RIGHT; resolve: the repository's top level
+     * LeftLabel and RightLabel name the panes when they are not files:
+     * branch names in a merge opened from the Conflicts window, "Base" and
+     * a branch in its Show changes diff. Empty means the file names.
      */
-    "paths": string[] | null;
+    "leftLabel": string;
+    "rightLabel": string;
 
     /**
-     * Title names the file being merged or compared, for the window title.
+     * Chunks: a merge's chunks; in a diff they compare LEFT with RIGHT and
+     * are Unchanged or RemoteOnly, with Base ranges equal to Local ranges.
      */
-    "title": string;
-    "base": string;
-    "local": string;
-    "remote": string;
     "chunks": merge$0.Chunk[] | null;
-    "initialResult": string;
 
     /**
      * from the file extension; "" if unknown
@@ -115,28 +132,30 @@ export interface Session {
     "language": string;
 
     /**
-     * "LF" or "CRLF"; the style MERGED is written in
+     * "LF" or "CRLF"; a merge writes MERGED in it
      */
     "eol": string;
+}
+
+/**
+ * View is what the frontend gets for a window (LoadSession). Only the
+ * parts a mode uses are set; the others are null in JSON: Text for a
+ * diff, the scratch window and a merge, Merge for a merge only. A
+ * directory diff and a Conflicts window have neither.
+ */
+export interface View {
+    "mode": Mode;
 
     /**
-     * AutoApplied reports that InitialResult already contains every
-     * non-conflicting chunk (--auto-apply), so the UI marks them applied.
+     * Title names the file being merged or compared, for the window title.
      */
-    "autoApplied": boolean;
+    "title": string;
 
     /**
-     * LocalLabel and RemoteLabel name the two sides in the pane headers
-     * when they are not files: branch names in a merge opened from the
-     * Conflicts window, "Base" and a branch in its Show changes diff.
-     * Empty means the headers show the file names.
+     * Paths: merge: BASE, LOCAL, REMOTE, MERGED; diff, dirdiff: LEFT,
+     * RIGHT; resolve: the repository's top level.
      */
-    "localLabel": string;
-    "remoteLabel": string;
-
-    /**
-     * EditedOnDisk: the output file was edited since Git stopped (a merge
-     * opened from the Conflicts window), so saving asks first.
-     */
-    "editedOnDisk": boolean;
+    "paths": string[] | null;
+    "text": Texts | null;
+    "merge": MergeView | null;
 }

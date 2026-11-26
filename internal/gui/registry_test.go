@@ -42,7 +42,7 @@ func fakeWindows() (*Windows, map[string]*fakeWindow, *int) {
 	return w, created, &quits
 }
 
-func diffSession() *session.Session { return &session.Session{Mode: session.Diff} }
+func diffSession() *session.Session { return &session.Session{View: session.View{Mode: session.Diff}} }
 
 func TestWindowsOpenChild(t *testing.T) {
 	w, created, _ := fakeWindows()
@@ -208,7 +208,7 @@ func TestWindowsOpenEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := *child.sess
-	if s.Mode != session.Diff || s.Local != "a\n" || s.Remote != "b\n" || s.Title != "m.txt" {
+	if s.Mode != session.Diff || s.Text.Left != "a\n" || s.Text.Right != "b\n" || s.Title != "m.txt" {
 		t.Errorf("child session = %+v", s)
 	}
 

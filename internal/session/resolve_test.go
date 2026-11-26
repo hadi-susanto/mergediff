@@ -259,17 +259,17 @@ func TestMergeSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Mode != Merge || m.Base != "one\ntwo\nthree\n" || m.Local != "one\nTWO main\nthree\nfour\n" || m.Remote != "one\nTWO feature\nthree\n" {
+	if m.Mode != Merge || m.Merge.Base != "one\ntwo\nthree\n" || m.Text.Left != "one\nTWO main\nthree\nfour\n" || m.Text.Right != "one\nTWO feature\nthree\n" {
 		t.Fatalf("texts: %+v", m)
 	}
-	if m.InitialResult != m.Base || m.AutoApplied {
+	if m.Merge.InitialResult != m.Merge.Base || m.Merge.AutoApplied {
 		t.Errorf("initial result should be base without --auto-apply")
 	}
-	if m.LocalLabel != "main" || m.RemoteLabel != "feature" {
-		t.Errorf("labels = %q, %q; want main, feature", m.LocalLabel, m.RemoteLabel)
+	if m.Text.LeftLabel != "main" || m.Text.RightLabel != "feature" {
+		t.Errorf("labels = %q, %q; want main, feature", m.Text.LeftLabel, m.Text.RightLabel)
 	}
-	if m.Title != "a.txt" || m.Language != "" {
-		t.Errorf("title %q language %q", m.Title, m.Language)
+	if m.Title != "a.txt" || m.Text.Language != "" {
+		t.Errorf("title %q language %q", m.Title, m.Text.Language)
 	}
 	if err := m.Save("one\nmerged\nthree\n"); err != nil {
 		t.Fatal(err)
@@ -292,8 +292,8 @@ func TestMergeSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.EOL != "CRLF" || strings.Contains(c.Local, "\r") {
-		t.Errorf("EOL %s, local %q", c.EOL, c.Local)
+	if c.Text.EOL != "CRLF" || strings.Contains(c.Text.Left, "\r") {
+		t.Errorf("EOL %s, local %q", c.Text.EOL, c.Text.Left)
 	}
 	if err := c.Save("a merged\nb\n"); err != nil {
 		t.Fatal(err)
@@ -314,8 +314,8 @@ func TestMergeSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !m2.AutoApplied || m2.InitialResult != "one\ntwo\nthree\nfour\n" {
-		t.Errorf("auto-applied initial result = %q", m2.InitialResult)
+	if !m2.Merge.AutoApplied || m2.Merge.InitialResult != "one\ntwo\nthree\nfour\n" {
+		t.Errorf("auto-applied initial result = %q", m2.Merge.InitialResult)
 	}
 }
 
@@ -337,13 +337,13 @@ func TestChangesSession(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", tc.path, err)
 		}
-		if d.Mode != Diff || d.Local != "base\n" || d.Remote != tc.remote {
-			t.Errorf("%s: local %q remote %q", tc.path, d.Local, d.Remote)
+		if d.Mode != Diff || d.Text.Left != "base\n" || d.Text.Right != tc.remote {
+			t.Errorf("%s: local %q remote %q", tc.path, d.Text.Left, d.Text.Right)
 		}
-		if d.LocalLabel != "Base" || d.RemoteLabel != tc.label {
-			t.Errorf("%s: labels %q, %q", tc.path, d.LocalLabel, d.RemoteLabel)
+		if d.Text.LeftLabel != "Base" || d.Text.RightLabel != tc.label {
+			t.Errorf("%s: labels %q, %q", tc.path, d.Text.LeftLabel, d.Text.RightLabel)
 		}
-		if len(d.Chunks) == 0 {
+		if len(d.Text.Chunks) == 0 {
 			t.Errorf("%s: no chunks", tc.path)
 		}
 	}
@@ -373,10 +373,10 @@ func TestEdited(t *testing.T) {
 	if got, err := s.Edited([]string{"a.txt", "b.txt"}); err != nil || len(got) != 1 || got[0] != "b.txt" {
 		t.Errorf("after editing b.txt: %v, %v", got, err)
 	}
-	if m, err := s.MergeSession("b.txt"); err != nil || !m.EditedOnDisk {
+	if m, err := s.MergeSession("b.txt"); err != nil || !m.Merge.EditedOnDisk {
 		t.Errorf("merge of an edited file: EditedOnDisk false (%v)", err)
 	}
-	if m, err := s.MergeSession("a.txt"); err != nil || m.EditedOnDisk {
+	if m, err := s.MergeSession("a.txt"); err != nil || m.Merge.EditedOnDisk {
 		t.Errorf("merge of an untouched file: EditedOnDisk true (%v)", err)
 	}
 }

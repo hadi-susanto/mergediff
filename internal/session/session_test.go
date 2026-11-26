@@ -41,17 +41,17 @@ func TestLoadDiff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Mode != Diff || s.Local != "one\ntwo\nthree\n" || s.Remote != "one\n2\nthree\n" || s.Base != "" {
+	if s.Mode != Diff || s.Text.Left != "one\ntwo\nthree\n" || s.Text.Right != "one\n2\nthree\n" || s.Merge != nil {
 		t.Fatalf("unexpected session: %+v", s)
 	}
-	if got := kinds(s.Chunks); got != "unchanged remote unchanged" {
+	if got := kinds(s.Text.Chunks); got != "unchanged remote unchanged" {
 		t.Fatalf("kinds = %q", got)
 	}
-	if c := s.Chunks[1]; c.Local != (merge.Range{Start: 1, End: 2}) || c.Remote != (merge.Range{Start: 1, End: 2}) {
+	if c := s.Text.Chunks[1]; c.Local != (merge.Range{Start: 1, End: 2}) || c.Remote != (merge.Range{Start: 1, End: 2}) {
 		t.Fatalf("changed chunk = %+v", c)
 	}
-	if s.Title != "a.txt ↔ b.txt" || s.EOL != "LF" {
-		t.Fatalf("title %q eol %q", s.Title, s.EOL)
+	if s.Title != "a.txt ↔ b.txt" || s.Text.EOL != "LF" {
+		t.Fatalf("title %q eol %q", s.Title, s.Text.EOL)
 	}
 	if err := s.Save("x"); !errors.Is(err, ErrNotMerge) {
 		t.Fatalf("Save in diff mode: err = %v, want ErrNotMerge", err)
@@ -107,13 +107,13 @@ func TestLoadMergeAndSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Mode != Merge || s.Title != "main.go" || s.Language != "go" || s.EOL != "CRLF" {
+	if s.Mode != Merge || s.Title != "main.go" || s.Text.Language != "go" || s.Text.EOL != "CRLF" {
 		t.Fatalf("unexpected session header: %+v", s)
 	}
-	if s.InitialResult != "a\nb\nc\nd\ne\n" {
-		t.Fatalf("initial result = %q, want the base text", s.InitialResult)
+	if s.Merge.InitialResult != "a\nb\nc\nd\ne\n" {
+		t.Fatalf("initial result = %q, want the base text", s.Merge.InitialResult)
 	}
-	if got := kinds(s.Chunks); got != "local unchanged remote unchanged remote" {
+	if got := kinds(s.Text.Chunks); got != "local unchanged remote unchanged remote" {
 		t.Fatalf("kinds = %q", got)
 	}
 	if err := s.Save("A\nb\nC\nd\nE\n"); err != nil {
@@ -131,10 +131,10 @@ func TestLoadMergeAndSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if auto.InitialResult != "A\nb\nC\nd\nE\n" || !auto.AutoApplied {
-		t.Fatalf("auto-applied initial result = %q, AutoApplied = %v", auto.InitialResult, auto.AutoApplied)
+	if auto.Merge.InitialResult != "A\nb\nC\nd\nE\n" || !auto.Merge.AutoApplied {
+		t.Fatalf("auto-applied initial result = %q, AutoApplied = %v", auto.Merge.InitialResult, auto.Merge.AutoApplied)
 	}
-	if s.AutoApplied {
+	if s.Merge.AutoApplied {
 		t.Fatal("AutoApplied set without --auto-apply")
 	}
 }
@@ -148,7 +148,7 @@ func TestLoadMergeMissingBase(t *testing.T) {
 		if err != nil {
 			t.Fatalf("base %q: %v", base, err)
 		}
-		if s.Base != "" || kinds(s.Chunks) != "conflict" || s.InitialResult != "" {
+		if s.Merge.Base != "" || kinds(s.Text.Chunks) != "conflict" || s.Merge.InitialResult != "" {
 			t.Fatalf("base %q: unexpected session %+v", base, s)
 		}
 	}
@@ -205,7 +205,7 @@ func TestLanguage(t *testing.T) {
 
 func TestScratchAndCompare(t *testing.T) {
 	s := NewScratch()
-	if s.Mode != Scratch || s.Chunks == nil || s.Paths == nil || s.Local != "" || s.Remote != "" {
+	if s.Mode != Scratch || s.Text.Chunks == nil || s.Paths == nil || s.Text.Left != "" || s.Text.Right != "" {
 		t.Fatalf("NewScratch = %+v", s)
 	}
 	if err := s.Save("x"); !errors.Is(err, ErrNotMerge) {
@@ -390,11 +390,11 @@ func TestLoadPairMissingSides(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if s.Mode != Diff || s.Local != tc.local || s.Remote != tc.remote || s.Title != "pkg/a.go" ||
-			s.Language != "go" || s.EOL != "CRLF" || !reflect.DeepEqual(s.Paths, []string{tc.left, tc.right}) {
+		if s.Mode != Diff || s.Text.Left != tc.local || s.Text.Right != tc.remote || s.Title != "pkg/a.go" ||
+			s.Text.Language != "go" || s.Text.EOL != "CRLF" || !reflect.DeepEqual(s.Paths, []string{tc.left, tc.right}) {
 			t.Errorf("LoadPair(%q, %q) = %+v", tc.left, tc.right, s)
 		}
-		if len(s.Chunks) == 0 {
+		if len(s.Text.Chunks) == 0 {
 			t.Errorf("LoadPair(%q, %q): no chunks", tc.left, tc.right)
 		}
 	}
@@ -422,10 +422,10 @@ func TestEntrySession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if child.Mode != Diff || child.Local != "a\n" || child.Remote != "" || child.Title != "sub/m.txt" {
+	if child.Mode != Diff || child.Text.Left != "a\n" || child.Text.Right != "" || child.Title != "sub/m.txt" {
 		t.Errorf("deleted file: %+v", child)
 	}
-	if child, err := s.EntrySession("sub"); err != nil || child.Remote != "now a file\n" || child.Local != "" {
+	if child, err := s.EntrySession("sub"); err != nil || child.Text.Right != "now a file\n" || child.Text.Left != "" {
 		t.Errorf("added file: %+v, %v", child, err)
 	}
 	for path, want := range map[string]error{
