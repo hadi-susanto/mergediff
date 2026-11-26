@@ -21,11 +21,11 @@ type windowHandle interface {
 	Focus()
 }
 
-// winEntry is one window: its session's App, its handle (nil until the
+// winEntry is one window: its state, its handle (nil until the
 // window exists) and, for a child window, the window that opened it and
 // what it shows (key).
 type winEntry struct {
-	app    *App
+	win    *window
 	handle windowHandle
 	parent string // "" for the main window
 	key    string
@@ -35,7 +35,7 @@ type winEntry struct {
 // e.g. a call that arrives after its window closed.
 var errUnknownWindow = errors.New("unknown window")
 
-// Windows keeps one App (session, exit code, close guard) per window,
+// Windows keeps one window state (session, exit code, close guard) per window,
 // keyed by window name. The main window, opened from the command line,
 // decides the process exit code; child windows close themselves and never
 // end the process. Closing a window closes the windows it opened.
@@ -49,7 +49,7 @@ type Windows struct {
 
 	// newWindow creates the window name showing sess. Set by Run;
 	// tests fake it.
-	newWindow func(name string, sess *session.Session, app *App) windowHandle
+	newWindow func(name string, sess *session.Session, win *window) windowHandle
 	// quitApp ends the application; called when the main window closes.
 	quitApp func()
 	// settings are the effective settings, given to every child window.
@@ -63,7 +63,7 @@ type Windows struct {
 func newWindows() *Windows {
 	return &Windows{
 		wins:      map[string]*winEntry{},
-		newWindow: func(name string, _ *session.Session, _ *App) windowHandle { return nopWindow(name) },
+		newWindow: func(name string, _ *session.Session, _ *window) windowHandle { return nopWindow(name) },
 		quitApp:   func() {},
 		emit:      func(string) {},
 	}
@@ -77,17 +77,17 @@ func (n nopWindow) Name() string { return string(n) }
 func (nopWindow) Close()         {}
 func (nopWindow) Focus()         {}
 
-// openMain registers app as the main window and creates the window.
-func (w *Windows) openMain(app *App) windowHandle {
+// openMain registers win as the main window and creates the window.
+func (w *Windows) openMain(win *window) windowHandle {
 	w.mu.Lock()
-	w.wins[mainWindowName] = &winEntry{app: app}
+	w.wins[mainWindowName] = &winEntry{win: win}
 	w.mu.Unlock()
-	return w.create(mainWindowName, app)
+	return w.create(mainWindowName, win)
 }
 
 // openChild shows sess in a child window of parent. key identifies what the
 // window shows: if parent already has a window for key, that window is
-// focused instead and sess is dropped. A child's App closes only its own
+// focused instead and sess is dropped. A child's state closes only its own
 // window and its exit code is ignored.
 func (w *Windows) openChild(parent, key string, sess *session.Session) error {
 	w.mu.Lock()
@@ -105,16 +105,16 @@ func (w *Windows) openChild(parent, key string, sess *session.Session) error {
 	}
 	w.nextChild++
 	name := fmt.Sprintf("child-%d", w.nextChild)
-	app := newApp(sess)
-	app.settings = w.settings
-	app.quit = func() {
+	win := newWindowState(sess)
+	win.settings = w.settings
+	win.quit = func() {
 		if h := w.handle(name); h != nil {
 			h.Close()
 		}
 	}
-	w.wins[name] = &winEntry{app: app, parent: parent, key: key}
+	w.wins[name] = &winEntry{win: win, parent: parent, key: key}
 	w.mu.Unlock()
-	w.create(name, app)
+	w.create(name, win)
 	return nil
 }
 
@@ -146,12 +146,12 @@ func (w *Windows) focusChild(parent, key string) bool {
 
 // openEntry opens the directory comparison entry at path, from window
 // parent, in a child window, or focuses the one already showing it.
-func (w *Windows) openEntry(parent string, app *App, path string) error {
+func (w *Windows) openEntry(parent string, win *window, path string) error {
 	key := "entry:" + path
 	if w.focusChild(parent, key) {
 		return nil
 	}
-	sess, err := app.sess.EntrySession(path)
+	sess, err := win.sess.EntrySession(path)
 	if err != nil {
 		return err
 	}
@@ -166,11 +166,11 @@ const mergeKeyPrefix = "merge:"
 // openMerge opens the text conflict at path, from Conflicts window parent,
 // in a merge window, or focuses the one already open. The Conflicts window
 // is told to refresh, so the row shows as locked.
-func (w *Windows) openMerge(parent string, app *App, path string) error {
+func (w *Windows) openMerge(parent string, win *window, path string) error {
 	if w.focusChild(parent, mergeKey(path)) {
 		return nil
 	}
-	sess, err := app.sess.MergeSession(path)
+	sess, err := win.sess.MergeSession(path)
 	if err != nil {
 		return err
 	}
@@ -183,12 +183,12 @@ func (w *Windows) openMerge(parent string, app *App, path string) error {
 
 // showChanges opens a modify/delete conflict's changes (base against the
 // side that kept the file) in a diff window, or focuses the one open.
-func (w *Windows) showChanges(parent string, app *App, path string) error {
+func (w *Windows) showChanges(parent string, win *window, path string) error {
 	key := "changes:" + path
 	if w.focusChild(parent, key) {
 		return nil
 	}
-	sess, err := app.sess.ChangesSession(path)
+	sess, err := win.sess.ChangesSession(path)
 	if err != nil {
 		return err
 	}
@@ -199,11 +199,11 @@ func (w *Windows) showChanges(parent string, app *App, path string) error {
 // with dirtyOnly, only those whose result has unsaved edits.
 func (w *Windows) openMerges(parent string, dirtyOnly bool) []string {
 	w.mu.Lock()
-	var apps []*App
+	var apps []*window
 	var paths []string
 	for _, e := range w.wins {
 		if e.parent == parent && strings.HasPrefix(e.key, mergeKeyPrefix) {
-			apps = append(apps, e.app)
+			apps = append(apps, e.win)
 			paths = append(paths, strings.TrimPrefix(e.key, mergeKeyPrefix))
 		}
 	}
@@ -223,7 +223,7 @@ var errMergeOpen = errors.New("its merge window is open; save or cancel it first
 
 // acceptSide resolves paths from window parent's resolve session, unless
 // one of them is open in a merge window.
-func (w *Windows) acceptSide(parent string, app *App, paths []string, side gitconflict.Side) (session.ConflictList, error) {
+func (w *Windows) acceptSide(parent string, win *window, paths []string, side gitconflict.Side) (session.ConflictList, error) {
 	w.mu.Lock()
 	for _, p := range paths {
 		if w.childLocked(parent, mergeKey(p)) != nil {
@@ -232,12 +232,12 @@ func (w *Windows) acceptSide(parent string, app *App, paths []string, side gitco
 		}
 	}
 	w.mu.Unlock()
-	return app.AcceptSide(paths, side)
+	return win.sess.Accept(paths, side)
 }
 
 // create makes the window for the registered entry name.
-func (w *Windows) create(name string, app *App) windowHandle {
-	h := w.newWindow(name, app.sess, app)
+func (w *Windows) create(name string, win *window) windowHandle {
+	h := w.newWindow(name, win.sess, win)
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if e, ok := w.wins[name]; ok {
@@ -256,15 +256,15 @@ func (w *Windows) handle(name string) windowHandle {
 	return nil
 }
 
-// byName returns the App of window name.
-func (w *Windows) byName(name string) (*App, error) {
+// byName returns the state of window name.
+func (w *Windows) byName(name string) (*window, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	e, ok := w.wins[name]
 	if !ok {
 		return nil, fmt.Errorf("window %s: %w", name, errUnknownWindow)
 	}
-	return e.app, nil
+	return e.win, nil
 }
 
 // children returns the windows parent opened. Each of them closes its own
@@ -306,19 +306,19 @@ func (w *Windows) closed(name string) {
 // errNoWindow is returned for a bound call that did not come from a window.
 var errNoWindow = errors.New("call did not come from a window")
 
-// caller returns the App of the window that made the bound call. Wails
+// caller returns the state of the window that made the bound call. Wails
 // puts the calling window in the context of every call from a webview.
-func (w *Windows) caller(ctx context.Context) (*App, error) {
-	_, app, err := w.callerName(ctx)
-	return app, err
+func (w *Windows) caller(ctx context.Context) (*window, error) {
+	_, win, err := w.callerName(ctx)
+	return win, err
 }
 
 // callerName is caller that also returns the calling window's name.
-func (w *Windows) callerName(ctx context.Context) (string, *App, error) {
-	win, ok := ctx.Value(application.WindowKey).(application.Window)
+func (w *Windows) callerName(ctx context.Context) (string, *window, error) {
+	wv, ok := ctx.Value(application.WindowKey).(application.Window)
 	if !ok {
 		return "", nil, errNoWindow
 	}
-	app, err := w.byName(win.Name())
-	return win.Name(), app, err
+	win, err := w.byName(wv.Name())
+	return wv.Name(), win, err
 }

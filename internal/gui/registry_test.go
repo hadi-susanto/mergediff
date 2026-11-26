@@ -33,7 +33,7 @@ func fakeWindows() (*Windows, map[string]*fakeWindow, *int) {
 	w := newWindows()
 	created := map[string]*fakeWindow{}
 	quits := 0
-	w.newWindow = func(name string, _ *session.Session, _ *App) windowHandle {
+	w.newWindow = func(name string, _ *session.Session, _ *window) windowHandle {
 		f := &fakeWindow{name: name, wins: w}
 		created[name] = f
 		return f
@@ -46,10 +46,10 @@ func diffSession() *session.Session { return &session.Session{Mode: session.Diff
 
 func TestWindowsOpenChild(t *testing.T) {
 	w, created, _ := fakeWindows()
-	mainApp := newApp(diffSession())
-	w.openMain(mainApp)
-	if got, err := w.byName(mainWindowName); err != nil || got != mainApp {
-		t.Fatalf("byName(main) = %p, %v; want the main App", got, err)
+	mainWin := newWindowState(diffSession())
+	w.openMain(mainWin)
+	if got, err := w.byName(mainWindowName); err != nil || got != mainWin {
+		t.Fatalf("byName(main) = %p, %v; want the main window state", got, err)
 	}
 
 	if err := w.openChild(mainWindowName, "a/b.txt", diffSession()); err != nil {
@@ -62,9 +62,9 @@ func TestWindowsOpenChild(t *testing.T) {
 	if child == nil {
 		t.Fatalf("no window child-1; created %v", created)
 	}
-	childApp, err := w.byName("child-1")
-	if err != nil || childApp == mainApp {
-		t.Fatalf("byName(child-1) = %p, %v; want its own App", childApp, err)
+	childWin, err := w.byName("child-1")
+	if err != nil || childWin == mainWin {
+		t.Fatalf("byName(child-1) = %p, %v; want its own state", childWin, err)
 	}
 
 	// Opening the same key again focuses the existing window.
@@ -76,7 +76,7 @@ func TestWindowsOpenChild(t *testing.T) {
 	}
 
 	// A child's Quit closes only that window.
-	childApp.Quit(command.ExitOK)
+	childWin.Quit(command.ExitOK)
 	if child.closed != 1 {
 		t.Errorf("child closed %d times after Quit, want 1", child.closed)
 	}
@@ -97,7 +97,7 @@ func TestWindowsOpenChildUnknownParent(t *testing.T) {
 
 func TestWindowsMainClosesChildren(t *testing.T) {
 	w, created, quits := fakeWindows()
-	w.openMain(newApp(diffSession()))
+	w.openMain(newWindowState(diffSession()))
 	for _, key := range []string{"a", "b"} {
 		if err := w.openChild(mainWindowName, key, diffSession()); err != nil {
 			t.Fatal(err)
@@ -139,11 +139,11 @@ func TestWindowsChildDoesNotAffectMainExitCode(t *testing.T) {
 	}
 
 	w, created, quits := fakeWindows()
-	mainApp := newApp(load("main.out"))
+	mainWin := newWindowState(load("main.out"))
 	mainQuits := 0
-	mainApp.quit = func() { mainQuits++ }
-	w.openMain(mainApp)
-	if c := mainApp.code(); c != command.ExitCancel {
+	mainWin.quit = func() { mainQuits++ }
+	w.openMain(mainWin)
+	if c := mainWin.code(); c != command.ExitCancel {
 		t.Fatalf("main exit code before any action = %d, want %d", c, command.ExitCancel)
 	}
 
@@ -154,7 +154,7 @@ func TestWindowsChildDoesNotAffectMainExitCode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := child.Save("merged\n"); err != nil {
+	if err := child.sess.Save("merged\n"); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := os.ReadFile(filepath.Join(dir, "child1.out")); err != nil || string(got) != "merged\n" {
@@ -168,7 +168,7 @@ func TestWindowsChildDoesNotAffectMainExitCode(t *testing.T) {
 	}
 	created["child-2"].Close()
 
-	if c := mainApp.code(); c != command.ExitCancel {
+	if c := mainWin.code(); c != command.ExitCancel {
 		t.Errorf("main exit code after child save/quit/close = %d, want %d", c, command.ExitCancel)
 	}
 	if mainQuits != 0 || *quits != 0 {
@@ -178,8 +178,8 @@ func TestWindowsChildDoesNotAffectMainExitCode(t *testing.T) {
 		t.Errorf("the main MERGED file was written by a child: %v", err)
 	}
 
-	mainApp.Quit(command.ExitOK)
-	if c := mainApp.code(); c != command.ExitOK || mainQuits != 1 {
+	mainWin.Quit(command.ExitOK)
+	if c := mainWin.code(); c != command.ExitOK || mainQuits != 1 {
 		t.Errorf("main Quit(0): code %d, quits %d; want 0, 1", c, mainQuits)
 	}
 }
@@ -197,30 +197,30 @@ func TestWindowsOpenEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 	w, created, _ := fakeWindows()
-	mainApp := newApp(sess)
-	w.openMain(mainApp)
+	mainWin := newWindowState(sess)
+	w.openMain(mainWin)
 
-	if err := w.openEntry(mainWindowName, mainApp, "m.txt"); err != nil {
+	if err := w.openEntry(mainWindowName, mainWin, "m.txt"); err != nil {
 		t.Fatal(err)
 	}
 	child, err := w.byName("child-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, _ := child.LoadSession()
+	s := *child.sess
 	if s.Mode != session.Diff || s.Local != "a\n" || s.Remote != "b\n" || s.Title != "m.txt" {
 		t.Errorf("child session = %+v", s)
 	}
 
 	// Opening it again focuses the open window.
-	if err := w.openEntry(mainWindowName, mainApp, "m.txt"); err != nil {
+	if err := w.openEntry(mainWindowName, mainWin, "m.txt"); err != nil {
 		t.Fatal(err)
 	}
 	if len(created) != 2 || created["child-1"].focused != 1 {
 		t.Errorf("reopening: %d windows, focused %d; want 2 windows, focused once", len(created), created["child-1"].focused)
 	}
 
-	if err := w.openEntry(mainWindowName, mainApp, "bin"); err == nil {
+	if err := w.openEntry(mainWindowName, mainWin, "bin"); err == nil {
 		t.Error("opening a binary file succeeded")
 	}
 	if len(created) != 2 {

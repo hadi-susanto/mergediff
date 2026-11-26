@@ -39,8 +39,8 @@ type Options struct {
 // Run opens the main window showing sess and blocks until the application
 // ends, returning the process exit code.
 func Run(sess *session.Session, cfg config.Config, opts Options) int {
-	app := newApp(sess)
-	app.settings = cfg.Values()
+	win := newWindowState(sess)
+	win.settings = cfg.Values()
 	wins := newWindows()
 	wails := application.New(application.Options{
 		Name:        "mergediff",
@@ -64,34 +64,34 @@ func Run(sess *session.Session, cfg config.Config, opts Options) int {
 			opts.OnError(err)
 		},
 	})
-	app.quit = wails.Quit
+	win.quit = wails.Quit
 	wins.quitApp = wails.Quit
-	wins.settings = app.settings
+	wins.settings = win.settings
 	wins.version = opts.Version
 	wins.emit = func(event string) { wails.Event.Emit(event) }
-	wins.newWindow = func(name string, sess *session.Session, app *App) windowHandle {
+	wins.newWindow = func(name string, sess *session.Session, win *window) windowHandle {
 		wopts := windowOptions(sess, cfg)
 		wopts.Name = name
-		window := wails.Window.NewWithOptions(wopts)
+		wv := wails.Window.NewWithOptions(wopts)
 		// In merge mode the frontend guards the close button, so unsaved
-		// edits are confirmed the same way as Cancel (see App.GuardClose).
-		window.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
-			if app.interceptClose(time.Now()) {
+		// edits are confirmed the same way as Cancel (see window.GuardClose).
+		wv.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+			if win.interceptClose(time.Now()) {
 				e.Cancel()
 				wails.Event.Emit(closeRequestedEvent(name))
 			}
 		})
 		// Runs only when no hook cancelled the close.
-		window.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+		wv.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
 			wins.closed(name)
 		})
-		return window
+		return wv
 	}
-	wins.openMain(app)
+	wins.openMain(win)
 
 	if err := wails.Run(); err != nil {
 		opts.OnError(err)
 		return command.ExitError
 	}
-	return app.code()
+	return win.code()
 }

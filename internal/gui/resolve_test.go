@@ -19,35 +19,35 @@ func TestResolveExitCode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := newApp(s)
-	if c := app.code(); c != command.ExitCancel {
+	win := newWindowState(s)
+	if c := win.code(); c != command.ExitCancel {
 		t.Errorf("code with conflicts left = %d, want 1", c)
 	}
 	if _, err := s.Accept([]string{"a.txt", "sub/b.txt"}, gitconflict.Yours); err != nil {
 		t.Fatal(err)
 	}
-	if c := app.code(); c != command.ExitOK {
+	if c := win.code(); c != command.ExitOK {
 		t.Errorf("code with none left = %d, want 0", c)
 	}
-	app.Quit(command.ExitError)
-	if c := app.code(); c != command.ExitError {
+	win.Quit(command.ExitError)
+	if c := win.code(); c != command.ExitError {
 		t.Errorf("code after Quit(2) = %d, want 2", c)
 	}
 }
 
 func TestWindowsAcceptSideRefusesOpenMergeWindows(t *testing.T) {
 	w, _, _ := fakeWindows()
-	app := newApp(diffSession())
-	w.openMain(app)
+	win := newWindowState(diffSession())
+	w.openMain(win)
 	if err := w.openChild(mainWindowName, mergeKey("a.txt"), diffSession()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := w.acceptSide(mainWindowName, app, []string{"b.txt", "a.txt"}, gitconflict.Yours); !errors.Is(err, errMergeOpen) ||
+	if _, err := w.acceptSide(mainWindowName, win, []string{"b.txt", "a.txt"}, gitconflict.Yours); !errors.Is(err, errMergeOpen) ||
 		!strings.Contains(err.Error(), "a.txt") {
 		t.Errorf("accept with a merge window open = %v, want errMergeOpen naming a.txt", err)
 	}
 	// Not locked: reaches the session (a diff session refuses it).
-	if _, err := w.acceptSide(mainWindowName, app, []string{"b.txt"}, gitconflict.Yours); !errors.Is(err, session.ErrNotResolve) {
+	if _, err := w.acceptSide(mainWindowName, win, []string{"b.txt"}, gitconflict.Yours); !errors.Is(err, session.ErrNotResolve) {
 		t.Errorf("accept without a lock = %v, want the session's ErrNotResolve", err)
 	}
 }
@@ -63,15 +63,15 @@ func TestWindowsOpenMerge(t *testing.T) {
 	w.emit = func(e string) { events = append(events, e) }
 	var opened []*session.Session
 	inner := w.newWindow
-	w.newWindow = func(name string, sess *session.Session, app *App) windowHandle {
+	w.newWindow = func(name string, sess *session.Session, win *window) windowHandle {
 		opened = append(opened, sess)
-		return inner(name, sess, app)
+		return inner(name, sess, win)
 	}
-	app := newApp(s)
-	w.openMain(app)
+	win := newWindowState(s)
+	w.openMain(win)
 	changed := conflictsChangedEvent(mainWindowName)
 
-	if err := w.openMerge(mainWindowName, app, "a.txt"); err != nil {
+	if err := w.openMerge(mainWindowName, win, "a.txt"); err != nil {
 		t.Fatal(err)
 	}
 	if len(opened) != 2 || opened[1].Mode != session.Merge || opened[1].LocalLabel != "main" {
@@ -84,7 +84,7 @@ func TestWindowsOpenMerge(t *testing.T) {
 		t.Errorf("open merges = %v", got)
 	}
 	// Opening it again focuses the window.
-	if err := w.openMerge(mainWindowName, app, "a.txt"); err != nil {
+	if err := w.openMerge(mainWindowName, win, "a.txt"); err != nil {
 		t.Fatal(err)
 	}
 	if len(opened) != 2 || created["child-1"].focused != 1 {
@@ -100,7 +100,7 @@ func TestWindowsOpenMerge(t *testing.T) {
 	if got := w.openMerges(mainWindowName, true); len(got) != 1 {
 		t.Errorf("unsaved after an edit = %v", got)
 	}
-	if err := child.Save("merged\n"); err != nil {
+	if err := child.sess.Save("merged\n"); err != nil {
 		t.Fatal(err)
 	}
 	created["child-1"].Close()
@@ -116,11 +116,11 @@ func TestWindowsOpenMerge(t *testing.T) {
 	}
 
 	// A resolved file cannot be opened.
-	if err := w.openMerge(mainWindowName, app, "a.txt"); !errors.Is(err, session.ErrNotConflicted) {
+	if err := w.openMerge(mainWindowName, win, "a.txt"); !errors.Is(err, session.ErrNotConflicted) {
 		t.Errorf("opening a resolved file = %v, want ErrNotConflicted", err)
 	}
 	// Show changes refuses a text conflict.
-	if err := w.showChanges(mainWindowName, app, "sub/b.txt"); !errors.Is(err, session.ErrCannotOpen) {
+	if err := w.showChanges(mainWindowName, win, "sub/b.txt"); !errors.Is(err, session.ErrCannotOpen) {
 		t.Errorf("show changes of a text conflict = %v, want ErrCannotOpen", err)
 	}
 }
