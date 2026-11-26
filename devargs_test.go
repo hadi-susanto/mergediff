@@ -3,6 +3,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -18,5 +20,19 @@ func TestDevArgs(t *testing.T) {
 	t.Setenv("MERGEDIFF_DEV_ARGS", "")
 	if got := devArgs(nil); len(got) != 0 {
 		t.Errorf("devArgs with empty env = %q", got)
+	}
+}
+
+func TestDevArgsDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(t.TempDir()) // restored after the test
+	t.Setenv("MERGEDIFF_DEV_ARGS", "resolve")
+	t.Setenv("MERGEDIFF_DEV_DIR", dir)
+	if got := devArgs(nil); !reflect.DeepEqual(got, []string{"resolve"}) {
+		t.Errorf("devArgs = %q", got)
+	}
+	wd, _ := os.Getwd()
+	if real, _ := filepath.EvalSymlinks(dir); wd != dir && wd != real {
+		t.Errorf("working directory = %q, want %q", wd, dir)
 	}
 }

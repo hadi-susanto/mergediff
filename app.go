@@ -7,6 +7,7 @@ import (
 	"github.com/hadi-susanto/mergediff/internal/config"
 	"github.com/hadi-susanto/mergediff/internal/diff"
 	"github.com/hadi-susanto/mergediff/internal/dirdiff"
+	"github.com/hadi-susanto/mergediff/internal/gitconflict"
 	"github.com/hadi-susanto/mergediff/internal/merge"
 	"github.com/hadi-susanto/mergediff/internal/session"
 )
@@ -28,6 +29,8 @@ type App struct {
 	// that the frontend has not acknowledged yet (zero if none).
 	guarded    bool
 	closeAsked time.Time
+	// dirty: the merge result has unsaved edits (SetDirty).
+	dirty bool
 }
 
 // closeAckTimeout is how long an unacknowledged close request blocks the
@@ -93,6 +96,26 @@ func (a *App) DirProgress() dirdiff.Snapshot {
 	return a.sess.DirProgress()
 }
 
+// Conflicts re-reads the conflicts of a resolve session.
+func (a *App) Conflicts() (session.ConflictList, error) {
+	return a.sess.Conflicts()
+}
+
+// AcceptSide resolves paths by taking side's version.
+func (a *App) AcceptSide(paths []string, side gitconflict.Side) (session.ConflictList, error) {
+	return a.sess.Accept(paths, side)
+}
+
+// MergeCounts counts a text conflict's conflicts and non-conflicting changes.
+func (a *App) MergeCounts(path string) (session.MergeCounts, error) {
+	return a.sess.MergeCounts(path)
+}
+
+// Edited returns those of paths edited since Git stopped.
+func (a *App) Edited(paths []string) ([]string, error) {
+	return a.sess.Edited(paths)
+}
+
 // Save writes the merge result to MERGED with the original line endings.
 func (a *App) Save(result string) error {
 	return a.sess.Save(result)
@@ -110,6 +133,19 @@ func (a *App) Quit(code int) {
 	quit := a.quit
 	a.mu.Unlock()
 	quit()
+}
+
+// SetDirty records whether the merge result has unsaved edits.
+func (a *App) SetDirty(dirty bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.dirty = dirty
+}
+
+func (a *App) isDirty() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.dirty
 }
 
 // GuardClose turns the close guard on or off. The frontend turns it on in
@@ -152,8 +188,22 @@ func (a *App) Version() string {
 	return Version()
 }
 
+// code is the exit code once the window has closed. A resolve session
+// asks Git: 0 if no conflicts are left within its paths, else 1.
 func (a *App) code() int {
 	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.exitCode
+	code := a.exitCode
+	a.mu.Unlock()
+	if a.sess.Mode != session.Resolve || code == exitError {
+		return code
+	}
+	n, err := a.sess.Remaining()
+	switch {
+	case err != nil:
+		return exitError
+	case n > 0:
+		return exitCancel
+	default:
+		return exitOK
+	}
 }

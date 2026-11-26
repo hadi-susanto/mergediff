@@ -46,6 +46,8 @@ export interface FileListOptions<T extends { path: string }> {
   selected?(rows: T[]): void;
   /** Ctrl/Cmd+click and Shift+click select several rows. */
   multi?: boolean;
+  /** Extra CSS classes for a row element, e.g. "fl-faded" for resolved rows. */
+  rowClass?(row: T): string;
 }
 
 /** Fills cell with a path: the muted directory part (truncated first) and the bold file name. */
@@ -64,6 +66,24 @@ export function renderPath(cell: HTMLElement, path: string, nameOnly = false): v
   n.className = "fl-name";
   n.textContent = name;
   cell.appendChild(n);
+}
+
+const FOLDER_SVG =
+  '<svg width="14" height="12" viewBox="0 0 14 12" aria-hidden="true"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3l1.5 1.5h4.5A1.5 1.5 0 0 1 13 4v5.5A1.5 1.5 0 0 1 11.5 11h-9A1.5 1.5 0 0 1 1 9.5z" fill="none" stroke="currentColor"/></svg>';
+
+/** The start of a directory header: ▾/▸, a folder icon and the directory (full path in a tooltip). */
+export function groupHeader(g: GroupItem): HTMLElement[] {
+  const chevron = document.createElement("span");
+  chevron.className = "fl-group-chevron";
+  chevron.textContent = g.collapsed ? "▸" : "▾";
+  const icon = document.createElement("span");
+  icon.className = "fl-group-icon";
+  icon.innerHTML = FOLDER_SVG;
+  const label = document.createElement("span");
+  label.className = "fl-group-label";
+  label.textContent = g.label;
+  label.title = g.dir || g.label;
+  return [chevron, icon, label];
 }
 
 /** How close two presses on the same row must be to count as a double-click. */
@@ -309,6 +329,8 @@ export class FileList<T extends { path: string }> {
     }
     if (nameOnly) el.classList.add("fl-in-group");
     el.classList.toggle("fl-blocked", this.o.blocked(it.row) !== null);
+    const extra = this.o.rowClass?.(it.row);
+    if (extra) el.classList.add(...extra.split(/\s+/).filter(Boolean));
   }
 
   private indexAt(e: MouseEvent): number {

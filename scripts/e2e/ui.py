@@ -10,6 +10,9 @@ Usage: ui.py STEP [STEP ...]
   scroll X Y N         move the pointer to screen X,Y and wheel N notches (N<0 = up)
   clickat X Y          left-click at screen X,Y (XTest), e.g. to focus a pane
   dblclickin TITLE X Y double-click at X,Y inside the window titled TITLE...
+  clickin TITLE X Y    click at X,Y inside the window titled TITLE...
+  modclickin MOD TITLE X Y
+                       the same with MOD (ctrl or shift) held, e.g. multi-select
   pixel X Y            print the colour at screen X,Y as #rrggbb
   find TEXT            wait until some element's text contains TEXT (exit 1 if not)
   samples TITLE SECS   wait for a window titled TITLE, then print the brightness
@@ -27,6 +30,8 @@ KEYSYMS = {
     "z": 0x7A,
     "s": 0x73,
     "a": 0x61,
+    "t": 0x74,
+    "y": 0x79,
     "Escape": 0xFF1B,
     "F5": 0xFFC2,
     "F7": 0xFFC4,
@@ -140,7 +145,7 @@ def scroll(x, y, n):
     time.sleep(0.5)
 
 
-def clickat(x, y, clicks=1):
+def clickat(x, y, clicks=1, mod=None):
     from Xlib import X
     from Xlib.ext import xtest
 
@@ -149,6 +154,10 @@ def clickat(x, y, clicks=1):
     xtest.fake_input(d, X.MotionNotify, x=x, y=y)
     d.sync()
     time.sleep(0.1)
+    modcode = d.keysym_to_keycode(KEYSYMS[mod]) if mod else None
+    if modcode:
+        xtest.fake_input(d, X.KeyPress, modcode)
+        d.sync()
     for _ in range(clicks):
         xtest.fake_input(d, X.ButtonPress, 1)
         d.sync()
@@ -156,6 +165,9 @@ def clickat(x, y, clicks=1):
         xtest.fake_input(d, X.ButtonRelease, 1)
         d.sync()
         time.sleep(0.06)
+    if modcode:
+        xtest.fake_input(d, X.KeyRelease, modcode)
+        d.sync()
     time.sleep(0.4)
 
 
@@ -284,6 +296,14 @@ def main(argv):
             ox, oy = window_origin(argv[i + 1])
             clickat(ox + int(argv[i + 2]), oy + int(argv[i + 3]), clicks=2)
             i += 3
+        elif step == "clickin":
+            ox, oy = window_origin(argv[i + 1])
+            clickat(ox + int(argv[i + 2]), oy + int(argv[i + 3]))
+            i += 3
+        elif step == "modclickin":
+            ox, oy = window_origin(argv[i + 2])
+            clickat(ox + int(argv[i + 3]), oy + int(argv[i + 4]), mod=argv[i + 1])
+            i += 4
         elif step == "pixel":
             pixel(int(argv[i + 1]), int(argv[i + 2]))
             i += 2

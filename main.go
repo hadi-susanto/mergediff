@@ -73,6 +73,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 	case cmdScratch:
 		sess = session.NewScratch()
+	case cmdResolve:
+		var cwd string
+		if cwd, err = os.Getwd(); err == nil {
+			sess, err = session.StartResolve(cwd, opts.paths, opts.autoApply)
+		}
+		if errors.Is(err, session.ErrNoConflicts) {
+			fmt.Fprintf(stdout, "mergediff: %v\n", err)
+			return exitOK
+		}
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "mergediff: %v\n", err)
@@ -170,6 +179,7 @@ func runGUI(sess *session.Session, cfg config.Config) int {
 	app.quit = wails.Quit
 	wins.quitApp = wails.Quit
 	wins.settings = app.settings
+	wins.emit = func(event string) { wails.Event.Emit(event) }
 	wins.newWindow = func(name string, sess *session.Session, app *App) windowHandle {
 		opts := windowOptions(sess, cfg)
 		opts.Name = name

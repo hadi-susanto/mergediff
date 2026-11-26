@@ -8,6 +8,7 @@ right files and reads its exit code, so you keep using the usual commands:
 | `git mergetool`   | a 3-way merge for each conflicted file, one after another |
 | `git difftool`    | a 2-way diff for each changed file, one after another     |
 | `git difftool -d` | one window listing every changed file (directory diff)    |
+| `mergediff resolve` | one window listing every conflicted file (no Git setup needed) |
 
 Make sure `mergediff` is on your `PATH` first (see
 [Installation](README.md#installation)).
@@ -66,6 +67,63 @@ file is resolved:
 During a **rebase**, Git's "local" side is the branch being rebased onto
 and "remote" is your own commit being replayed; mergediff shows what Git
 passes.
+
+## All conflicts in one window: `mergediff resolve`
+
+`git mergetool` starts its tool once per file, so it cannot show a list.
+`mergediff resolve` talks to Git itself, like the JetBrains IDEs' Conflicts
+dialog, and needs no configuration. Run it anywhere in the working tree
+after Git stopped with conflicts, or later, after resolving some by hand:
+
+```sh
+mergediff resolve                  # every conflicted file of the repository
+mergediff resolve src/ pom.xml     # only these (relative to the current directory)
+mergediff resolve --auto-apply     # merge windows start with non-conflicting changes applied
+```
+
+To run it as `git resolve` (the `cd` keeps `PATH` arguments relative to
+where you are; Git runs aliases from the top level):
+
+```sh
+git config --global alias.resolve '!f() { cd "${GIT_PREFIX:-.}" && mergediff resolve "$@"; }; f'
+```
+
+|                  | `git mergetool`                         | `mergediff resolve`                                       |
+|------------------|-----------------------------------------|-----------------------------------------------------------|
+| Files            | one window after another                | one list; open, accept or skip them in any order          |
+| Whole-file sides | not offered                             | *Accept Yours* / *Accept Theirs*, for several files at once |
+| Pane labels      | file names                              | branch names                                              |
+| Binary, symlink, modify/delete | Git's own prompts         | accepted from the list                                    |
+| During a rebase  | Git's sides: "local" is the upstream    | swapped: *Yours* is your commit                           |
+| Setup            | `merge.tool` and `mergetool.*`          | none                                                      |
+
+What it reads and runs:
+
+- `git ls-files --unmerged` lists the conflicts; `git cat-file --filters`
+  reads base / yours / theirs with the checkout's line endings. A file's
+  status on each side (Modified, Added, Deleted) comes from which stages
+  exist.
+- **Merge…** opens the 3-way view on those texts and writes the result to
+  the working-tree file, then `git add`.
+- **Accept** runs `git checkout --ours|--theirs -- FILE` and `git add`, or
+  `git rm` when the accepted side deleted the file. While rebasing it passes
+  the opposite flag, so *Yours* always means your work.
+- These are the only commands that change anything. mergediff never commits,
+  continues, aborts, resets or stashes: when all are resolved it shows the
+  command to run next (`git commit`, `git merge --continue`,
+  `git rebase --continue`, `git cherry-pick --continue` or
+  `git revert --continue`) with a *Copy* button.
+
+**Edited since Git stopped:** if you have already worked on a conflicted
+file by hand (and not `git add`ed it), mergediff notices by merging the
+stages again (`git merge-file` on temporary copies, in your
+`merge.conflictStyle`) and comparing. The file is flagged, and *Accept* or
+saving a merge over it asks first, because both replace the whole file.
+
+Exit codes: `0` when no conflicts are left within the given paths as the
+window closes (or there were none: "mergediff: no conflicts to resolve"),
+`1` when some are left, `2` outside a Git working tree or with a `git`
+older than 2.11.
 
 ## Viewing changes file by file: `git difftool`
 
@@ -137,5 +195,10 @@ There every file is compared, so unchanged files are counted too; tick
   itself.
 - **Check what Git will run:** `git config --get-regexp '^(merge|diff)tool'`.
 - **A merge shows "file looks binary" or "not valid UTF-8" (exit `2`):**
-  mergediff merges UTF-8 text only; resolve such files with
-  `git checkout --ours` / `--theirs` or another tool.
+  mergediff merges UTF-8 text only; accept one side in `mergediff resolve`,
+  or use `git checkout --ours` / `--theirs` or another tool.
+- **`mergediff resolve` says "not inside a Git working tree", "git not
+  found" or "git is too old":** run it inside the repository; it needs `git`
+  2.11 or later on the `PATH`.
+- **A submodule conflict:** mergediff lists it but leaves it to you: check
+  out the commit you want inside the submodule, then `git add` it.

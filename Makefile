@@ -14,7 +14,7 @@ WAILS3 ?= wails3
 ARGS ?= testdata/dev/local.go testdata/dev/remote.go
 
 .DEFAULT_GOAL := help
-.PHONY: help deps dev build test test-backend test-frontend vet typecheck check e2e version clean \
+.PHONY: help deps dev dev-resolve build test test-backend test-frontend vet typecheck check e2e version clean \
 	release release-dry-run release-preflight
 REPO_URL := https://github.com/hadi-susanto/mergediff
 
@@ -30,6 +30,14 @@ deps: ## Download Go modules, install frontend packages, check the Wails setup
 
 dev: ## Run with hot reload on sample files (override with ARGS="...")
 	MERGEDIFF_DEV_ARGS="$(ARGS)" $(WAILS3) dev
+
+# The conflicted sample repository `make dev-resolve` creates afresh.
+DEV_CONFLICTS := $(CURDIR)/bin/dev-conflicts
+
+dev-resolve: ## Run mergediff resolve with hot reload in a fresh conflicted sample repository
+	rm -rf "$(DEV_CONFLICTS)"
+	scripts/dev/conflict-repo.sh "$(DEV_CONFLICTS)"
+	MERGEDIFF_DEV_DIR="$(DEV_CONFLICTS)" MERGEDIFF_DEV_ARGS="resolve" $(WAILS3) dev
 
 build: ## Build the production binary into bin/ (UNIVERSAL=1: macOS arm64+amd64)
 ifeq ($(UNIVERSAL),1)

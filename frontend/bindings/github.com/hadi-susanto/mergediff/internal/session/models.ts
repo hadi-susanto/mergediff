@@ -3,7 +3,57 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as gitconflict$0 from "../gitconflict/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as merge$0 from "../merge/models.js";
+
+/**
+ * ConflictList is the Conflicts window's content.
+ */
+export interface ConflictList {
+    "operation": gitconflict$0.Operation;
+    "rows": ConflictRow[] | null;
+
+    /**
+     * Unresolved counts the rows not yet resolved.
+     */
+    "unresolved": number;
+
+    /**
+     * Open lists the paths open in merge windows (they cannot be accepted
+     * until those close). The window registry fills it in.
+     */
+    "open": string[] | null;
+}
+
+/**
+ * ConflictRow is one file of the Conflicts window.
+ */
+export interface ConflictRow {
+    /**
+     * Path is relative to the repository's top level, "/" separators.
+     */
+    "path": string;
+    "yours": gitconflict$0.Status;
+    "theirs": gitconflict$0.Status;
+    "kind": gitconflict$0.Kind;
+    "state": gitconflict$0.State;
+
+    /**
+     * Resolved: no longer unmerged. Yours, Theirs, Kind and State then keep
+     * what they were while the file was conflicted.
+     */
+    "resolved": boolean;
+}
+
+/**
+ * MergeCounts describes a text conflict's merge, for the side panel.
+ */
+export interface MergeCounts {
+    "conflicts": number;
+    "nonConflicting": number;
+}
 
 /**
  * Mode is the kind of session.
@@ -27,6 +77,11 @@ export enum Mode {
      * DirDiff lists the files that differ between two directories.
      */
     DirDiff = "dirdiff",
+
+    /**
+     * Resolve lists a Git working tree's merge conflicts (mergediff resolve).
+     */
+    Resolve = "resolve",
 };
 
 /**
@@ -40,7 +95,7 @@ export interface Session {
     "mode": Mode;
 
     /**
-     * merge: BASE, LOCAL, REMOTE, MERGED; diff, dirdiff: LEFT, RIGHT
+     * merge: BASE, LOCAL, REMOTE, MERGED; diff, dirdiff: LEFT, RIGHT; resolve: the repository's top level
      */
     "paths": string[] | null;
 
@@ -69,4 +124,19 @@ export interface Session {
      * non-conflicting chunk (--auto-apply), so the UI marks them applied.
      */
     "autoApplied": boolean;
+
+    /**
+     * LocalLabel and RemoteLabel name the two sides in the pane headers
+     * when they are not files: branch names in a merge opened from the
+     * Conflicts window, "Base" and a branch in its Show changes diff.
+     * Empty means the headers show the file names.
+     */
+    "localLabel": string;
+    "remoteLabel": string;
+
+    /**
+     * EditedOnDisk: the output file was edited since Git stopped (a merge
+     * opened from the Conflicts window), so saving asks first.
+     */
+    "editedOnDisk": boolean;
 }

@@ -41,6 +41,8 @@ export interface MergeBackend {
    * backend's close guard). Called once the view is ready.
    */
   guardClose(handler: () => void): void;
+  /** Tells the backend whether the result has unsaved edits (optional). */
+  setDirty?(dirty: boolean): void;
 }
 
 export interface MergeInput {
@@ -51,6 +53,11 @@ export interface MergeInput {
   chunks: MergeChunk[];
   initialResult: string;
   autoApplied: boolean;
+  /** Branch names for the side pane headers; empty: the file names. */
+  localLabel?: string;
+  remoteLabel?: string;
+  /** The output file was edited since Git stopped: saving asks first. */
+  editedOnDisk?: boolean;
 }
 
 /** Process exit codes, mirroring cli.go. */
@@ -111,11 +118,11 @@ export function renderMerge(input: MergeInput, backend: MergeBackend): Rendered 
   // Side panes: their line highlights depend on chunk states (resolved
   // chunks fade), so they sit in a compartment repainted when states change.
   const sideDeco = { local: new Compartment(), remote: new Compartment() };
-  const localPane = createReadOnlyPane(`Local (yours) · ${baseName(localPath)}`, localPath, input.local, [
+  const localPane = createReadOnlyPane(`Local (yours) · ${input.localLabel || baseName(localPath)}`, localPath, input.local, [
     sideDeco.local.of([]),
     charMarks,
   ]);
-  const remotePane = createReadOnlyPane(`Remote (theirs) · ${baseName(remotePath)}`, remotePath, input.remote, [
+  const remotePane = createReadOnlyPane(`Remote (theirs) · ${input.remoteLabel || baseName(remotePath)}`, remotePath, input.remote, [
     sideDeco.remote.of([]),
     charMarks,
   ]);
@@ -164,6 +171,14 @@ export function renderMerge(input: MergeInput, backend: MergeBackend): Rendered 
     change: (dir) => goTo("change", dir),
     conflict: (dir) => goTo("conflict", dir),
     async save() {
+      if (input.editedOnDisk) {
+        const ok = await confirmDialog(
+          "This file was edited since Git stopped.\n\nSave the result and replace those edits?",
+          "Save",
+          "Keep editing",
+        );
+        if (!ok) return;
+      }
       const left = conflictsLeft(result.view.state.field(chunkField));
       if (left > 0) {
         const ok = await confirmDialog(
@@ -198,7 +213,15 @@ export function renderMerge(input: MergeInput, backend: MergeBackend): Rendered 
   };
 
   let sync: ScrollSync | null = null;
+  let dirty = false;
   const onResultUpdate = (u: ViewUpdate) => {
+    if (u.docChanged && backend.setDirty) {
+      const now = u.state.doc.toString() !== init.doc;
+      if (now !== dirty) {
+        dirty = now;
+        backend.setDirty(now);
+      }
+    }
     const before = u.startState.field(chunkField);
     const after = u.state.field(chunkField);
     if (u.docChanged || u.geometryChanged || u.viewportChanged) {

@@ -6,5 +6,8 @@ export {
 } from "./models.js";
 
 export type {
+    ConflictList,
+    ConflictRow,
+    MergeCounts,
     Session
 } from "./models.js";

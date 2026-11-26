@@ -24,10 +24,22 @@ import * as diff$0 from "./internal/diff/models.js";
 import * as dirdiff$0 from "./internal/dirdiff/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as gitconflict$0 from "./internal/gitconflict/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as merge$0 from "./internal/merge/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as session$0 from "./internal/session/models.js";
+
+/**
+ * AcceptSide resolves the calling window's conflicts at paths by taking
+ * side ("yours" or "theirs"), and returns the refreshed list. Files open in
+ * a merge window are refused.
+ */
+export function AcceptSide(paths: string[] | null, side: gitconflict$0.Side): $CancellablePromise<session$0.ConflictList> {
+    return $Call.ByID(3651067012, paths, side);
+}
 
 /**
  * CharDiff returns character-level differences between two texts.
@@ -48,6 +60,14 @@ export function CloseRequestSeen(): $CancellablePromise<void> {
  */
 export function Compare(left: string, right: string): $CancellablePromise<merge$0.Chunk[] | null> {
     return $Call.ByID(2292572938, left, right);
+}
+
+/**
+ * Conflicts re-reads the calling window's conflicts (mergediff resolve).
+ * Open lists the files it has open in merge windows.
+ */
+export function Conflicts(): $CancellablePromise<session$0.ConflictList> {
+    return $Call.ByID(378483990);
 }
 
 /**
@@ -74,6 +94,14 @@ export function DirStats(): $CancellablePromise<dirdiff$0.StatsBatch> {
 }
 
 /**
+ * Edited returns those of paths (conflicts of the calling window) whose
+ * working-tree file was edited since Git stopped.
+ */
+export function Edited(paths: string[] | null): $CancellablePromise<string[] | null> {
+    return $Call.ByID(138835398, paths);
+}
+
+/**
  * GuardClose turns the calling window's close guard on or off.
  */
 export function GuardClose(on: boolean): $CancellablePromise<void> {
@@ -88,12 +116,28 @@ export function LoadSession(): $CancellablePromise<session$0.Session> {
 }
 
 /**
+ * MergeCounts counts the conflicts and non-conflicting changes of a text
+ * conflict of the calling window, for its side panel.
+ */
+export function MergeCounts(path: string): $CancellablePromise<session$0.MergeCounts> {
+    return $Call.ByID(928220953, path);
+}
+
+/**
  * OpenEntry opens a file of the calling window's directory comparison
  * (path relative, "/" separators) in a diff window of its own, or focuses
  * the window already showing it.
  */
 export function OpenEntry(path: string): $CancellablePromise<void> {
     return $Call.ByID(2302430721, path);
+}
+
+/**
+ * OpenMerge opens a text conflict of the calling Conflicts window in a
+ * merge window of its own, or focuses the one already showing it.
+ */
+export function OpenMerge(path: string): $CancellablePromise<void> {
+    return $Call.ByID(3397542269, path);
 }
 
 /**
@@ -112,10 +156,33 @@ export function Save(result: string): $CancellablePromise<void> {
 }
 
 /**
+ * SetDirty records whether the calling merge window's result has unsaved
+ * edits.
+ */
+export function SetDirty(dirty: boolean): $CancellablePromise<void> {
+    return $Call.ByID(4117643367, dirty);
+}
+
+/**
  * Settings returns the effective settings of the calling window.
  */
 export function Settings(): $CancellablePromise<{ [_ in string]?: string } | null> {
     return $Call.ByID(3483087558);
+}
+
+/**
+ * ShowChanges opens a modify/delete conflict's changes in a diff window.
+ */
+export function ShowChanges(path: string): $CancellablePromise<void> {
+    return $Call.ByID(3598217195, path);
+}
+
+/**
+ * UnsavedMerges returns the files the calling window has open in merge
+ * windows with unsaved edits, so it can ask before closing them.
+ */
+export function UnsavedMerges(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(4088867322);
 }
 
 /**

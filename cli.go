@@ -21,22 +21,26 @@ var usage = `Usage:
   mergediff LEFT RIGHT                                    2-way diff (read-only)
   mergediff LEFTDIR RIGHTDIR                              compare two directories (git difftool -d)
   mergediff                                               scratch diff: paste text into both panes
+  mergediff resolve [--auto-apply] [--] [PATH...]         list Git's merge conflicts and resolve them
   mergediff settings [list | get KEY | set KEY VALUE | unset KEY | path]
                                                           view or change saved settings
   mergediff --help | --version
 
-To compare a file named "settings", write ./settings.
+To compare a file named "settings" or "resolve", write ./settings or ./resolve.
+resolve lists the conflicts under PATH... (relative to the current directory),
+or all of the repository's.
 
 Options:
   -o, --output MERGED   file the merge result is written to (required for a merge)
-      --auto-apply      apply all non-conflicting changes at startup
+      --auto-apply      apply all non-conflicting changes when a merge opens
   -h, --help            show this help
   -v, --version         print the version
       --                end of options (for paths starting with "-")
 
 ` + settingsFlagsUsage() + `
 Exit codes:
-  0  merge saved with all conflicts resolved, or diff or directory window closed
+  0  merge saved with all conflicts resolved, diff or directory window closed,
+     or no conflicts left when resolve closes
   1  cancelled, or closed with unresolved conflicts or unsaved changes
   2  usage or I/O error
 `
@@ -65,18 +69,20 @@ const (
 	cmdVersion
 	cmdSettings
 	cmdScratch
+	cmdResolve
 )
 
 // options is the parsed command line.
 type options struct {
 	cmd       command
-	base      string // merge
-	local     string // merge
-	remote    string // merge
-	output    string // merge
-	autoApply bool   // merge
-	left      string // diff
-	right     string // diff
+	base      string   // merge
+	local     string   // merge
+	remote    string   // merge
+	output    string   // merge
+	autoApply bool     // merge
+	left      string   // diff
+	right     string   // diff
+	paths     []string // resolve: PATH arguments, as given
 	// settings are --KEY VALUE overrides of registered settings, in order.
 	settings []setting
 	// settingsArgs are the arguments after "mergediff settings".
@@ -104,6 +110,12 @@ func parseArgs(args []string) (options, error) {
 	if len(args) > 0 && args[0] == "settings" {
 		o.cmd, o.settingsArgs = cmdSettings, args[1:]
 		return o, nil
+	}
+	// "resolve" is a subcommand only as the first argument, like
+	// "settings"; its own arguments are parsed like the others.
+	resolve := len(args) > 0 && args[0] == "resolve"
+	if resolve {
+		args = args[1:]
 	}
 	var paths []string
 	var help, version, haveOutput bool
@@ -176,6 +188,15 @@ func parseArgs(args []string) (options, error) {
 		return o, nil
 	case version:
 		o.cmd = cmdVersion
+		return o, nil
+	}
+
+	if resolve {
+		if haveOutput {
+			return o, usagef("-o is not valid with resolve: each file is written where it is")
+		}
+		o.cmd = cmdResolve
+		o.paths = paths
 		return o, nil
 	}
 

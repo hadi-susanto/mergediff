@@ -59,6 +59,18 @@ XWayland is unverified. The app itself is not X11-specific.
   opened says why, Esc closes the list and its windows (exit 0); then
   `git difftool -d` on a temporary repository (modified, added, deleted)
   opens the list, a file opens, and Git exits 0 when the list closes
+- `resolve.sh` — `mergediff resolve` on the mockups' conflicted repository
+  (`scripts/dev/conflict-repo.sh`): rows selected by real clicks (also in
+  the grouped list), Accept Theirs on a binary file (bytes checked), Ctrl+click
+  multi-select and its confirmation, modify/delete buttons (`git rm`), F5
+  after resolving in a terminal, Ctrl+Shift+T; Show changes opens a diff
+  window; a file edited since Git stopped is flagged and accepting it asks
+  first; double-click opens the merge window (branch names in its headers,
+  row locked, a second double-click focuses it), closing the list with an
+  unsaved merge asks, Save stages the file and refreshes the list; the
+  all-resolved banner and Copy; exit 0 from the window's close button when
+  all are resolved, exit 1 with conflicts left, exit 2 outside a
+  repository, "no conflicts" with exit 0
 - `perf.sh` — a 10,000-line merge with ~430 changes: time to interactive,
   responsiveness right after fast scrolling, typing and "apply all", saving;
   and a 20,000-file directory diff (500 changed) shown within 3 s of starting
@@ -68,7 +80,8 @@ XWayland is unverified. The app itself is not X11-specific.
   (`gen-dirs.py DIR [FILES] [CHANGED]`, default 20,000 and 500)
 - `lib.sh` — shared helpers (`check`, `ui`, `start_app`, …)
 - `ui.py` — the driver: `wait`, `dump`, `click NAME[#N]`, `key COMBO`,
-  `type TEXT`, `scroll X Y N`, `clickat X Y`, `dblclickin TITLE X Y`,
+  `type TEXT`, `scroll X Y N`, `clickat X Y`, `clickin TITLE X Y`,
+  `modclickin ctrl|shift TITLE X Y`, `dblclickin TITLE X Y`,
   `pixel X Y`, `find TEXT`, `samples TITLE SECS`
 
 The scripts use their own config file (`XDG_CONFIG_HOME` points into a
@@ -86,5 +99,6 @@ their accessible name, which is their visible label
 (`Save`, `↓ Conflict`) or, for symbol-only buttons, their tooltip
 (`Next change (F7)`, `Ignore this change`). Several buttons can share a
 name; `NAME#N` picks the N-th in page order: toolbar, then the Local→Result
-strip, then the Result→Remote strip. `ui.py dump` lists them. Keep the
+strip, then the Result→Remote strip. `ui.py dump` lists them. While a
+dialog is open only its buttons are listed (the page behind it is inert). Keep the
 windows on screen and avoid typing while the scripts run.
