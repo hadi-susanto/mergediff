@@ -31,8 +31,8 @@ func TestDiffOpensWindow(t *testing.T) {
 	if code, err := runDiff(t, f, a, b); code != 7 || err != nil {
 		t.Fatalf("exit code %d, %v; want the window's code 7", code, err)
 	}
-	if s := f.opened; s == nil || s.Mode != session.Diff || s.Text.Language != "go" {
-		t.Fatalf("diff session = %+v", s)
+	if s, ok := f.opened.(*session.DiffSession); !ok || s.View().Text.Language != "go" {
+		t.Fatalf("diff session = %#v", f.opened)
 	}
 }
 
@@ -79,9 +79,9 @@ func TestDiffDirectories(t *testing.T) {
 	if code, err := runDiff(t, f, left, right); code != ExitOK || err != nil {
 		t.Fatalf("two directories: exit %d, %v", code, err)
 	}
-	s := f.opened
-	if s == nil || s.Mode != session.DirDiff {
-		t.Fatalf("two directories opened %+v, want a dirdiff session", s)
+	s, ok := f.opened.(*session.DirDiffSession)
+	if !ok {
+		t.Fatalf("two directories opened %#v, want a dirdiff session", f.opened)
 	}
 	if entries, err := s.DirEntries(); err != nil || len(entries) != 1 || entries[0].Path != "a.txt" {
 		t.Fatalf("dirdiff entries %+v, %v; want a.txt", entries, err)

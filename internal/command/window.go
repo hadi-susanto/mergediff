@@ -9,7 +9,7 @@ import (
 // openWindow loads the settings and opens the window for sess, returning
 // the window's exit code. The config is read only here, so commands that
 // open no window work with a broken config file.
-func openWindow(env Env, sess *session.Session, flags []cliargs.Setting) (int, error) {
+func openWindow(env Env, sess session.Session, flags []cliargs.Setting) (int, error) {
 	cfg, err := loadSettings(env, flags)
 	if err != nil {
 		return ExitError, err

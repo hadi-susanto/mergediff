@@ -35,7 +35,7 @@ func main() {
 		Getwd:      os.Getwd,
 		ConfigPath: config.Path,
 		Version:    Version(),
-		OpenWindow: func(s *session.Session, c config.Config) int { return gui.Run(s, c, guiOptions) },
+		OpenWindow: func(s session.Session, c config.Config) int { return gui.Run(s, c, guiOptions) },
 	}))
 }
 

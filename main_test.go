@@ -16,10 +16,10 @@ import (
 
 // fakeEnv is an Env whose window records the session it gets and returns
 // code, and whose config file is in a fresh temporary directory.
-func fakeEnv(t *testing.T, code int) (command.Env, *bytes.Buffer, *bytes.Buffer, **session.Session) {
+func fakeEnv(t *testing.T, code int) (command.Env, *bytes.Buffer, *bytes.Buffer, *session.Session) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	var opened *session.Session
+	var opened session.Session
 	path := filepath.Join(t.TempDir(), "mergediff", "config.toml")
 	env := command.Env{
 		Stdout:     &stdout,
@@ -27,7 +27,7 @@ func fakeEnv(t *testing.T, code int) (command.Env, *bytes.Buffer, *bytes.Buffer,
 		Getwd:      os.Getwd,
 		ConfigPath: func() (string, error) { return path, nil },
 		Version:    "2026-11-19 (a1b2c3d)",
-		OpenWindow: func(s *session.Session, _ config.Config) int { opened = s; return code },
+		OpenWindow: func(s session.Session, _ config.Config) int { opened = s; return code },
 	}
 	return env, &stdout, &stderr, &opened
 }

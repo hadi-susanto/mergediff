@@ -32,9 +32,9 @@ func TestResolve(t *testing.T) {
 	if code, err := runResolve(t, f, "--auto-apply"); code != 7 || err != nil {
 		t.Fatalf("exit code %d, %v", code, err)
 	}
-	s := f.opened
-	if s == nil || s.Mode != session.Resolve || !strings.HasPrefix(s.Title, "Resolve conflicts · ") {
-		t.Fatalf("session = %+v", s)
+	s, ok := f.opened.(*session.ResolveSession)
+	if !ok || !strings.HasPrefix(s.View().Title, "Resolve conflicts · ") {
+		t.Fatalf("session = %#v", f.opened)
 	}
 	list, err := s.Conflicts()
 	if err != nil || len(list.Rows) != 2 {
@@ -45,7 +45,7 @@ func TestResolve(t *testing.T) {
 	if code, err := runResolve(t, f, "--", "b.txt"); code != 7 || err != nil {
 		t.Fatalf("resolve b.txt: %d, %v", code, err)
 	}
-	if list, err := f.opened.Conflicts(); err != nil || len(list.Rows) != 1 || list.Rows[0].Path != "sub/b.txt" {
+	if list, err := f.opened.(*session.ResolveSession).Conflicts(); err != nil || len(list.Rows) != 1 || list.Rows[0].Path != "sub/b.txt" {
 		t.Fatalf("resolve b.txt: %+v, %v", list, err)
 	}
 
