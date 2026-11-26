@@ -29,6 +29,8 @@ type App struct {
 	// that the frontend has not acknowledged yet (zero if none).
 	guarded    bool
 	closeAsked time.Time
+	// dirty: the merge result has unsaved edits (SetDirty).
+	dirty bool
 }
 
 // closeAckTimeout is how long an unacknowledged close request blocks the
@@ -126,6 +128,19 @@ func (a *App) Quit(code int) {
 	quit := a.quit
 	a.mu.Unlock()
 	quit()
+}
+
+// SetDirty records whether the merge result has unsaved edits.
+func (a *App) SetDirty(dirty bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.dirty = dirty
+}
+
+func (a *App) isDirty() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.dirty
 }
 
 // GuardClose turns the close guard on or off. The frontend turns it on in

@@ -133,3 +133,76 @@ func TestWindowsAcceptSideRefusesOpenMergeWindows(t *testing.T) {
 		t.Errorf("accept without a lock = %v, want the session's ErrNotResolve", err)
 	}
 }
+
+func TestWindowsOpenMerge(t *testing.T) {
+	dir := conflictRepo(t)
+	s, err := session.StartResolve(dir, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, created, _ := fakeWindows()
+	var events []string
+	w.emit = func(e string) { events = append(events, e) }
+	var opened []*session.Session
+	inner := w.newWindow
+	w.newWindow = func(name string, sess *session.Session, app *App) windowHandle {
+		opened = append(opened, sess)
+		return inner(name, sess, app)
+	}
+	app := newApp(s)
+	w.openMain(app)
+	changed := conflictsChangedEvent(mainWindowName)
+
+	if err := w.openMerge(mainWindowName, app, "a.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if len(opened) != 2 || opened[1].Mode != session.Merge || opened[1].LocalLabel != "main" {
+		t.Fatalf("merge window session = %+v", opened[len(opened)-1])
+	}
+	if len(events) != 1 || events[0] != changed {
+		t.Errorf("events after opening = %v, want %s", events, changed)
+	}
+	if got := w.openMerges(mainWindowName, false); len(got) != 1 || got[0] != "a.txt" {
+		t.Errorf("open merges = %v", got)
+	}
+	// Opening it again focuses the window.
+	if err := w.openMerge(mainWindowName, app, "a.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if len(opened) != 2 || created["child-1"].focused != 1 {
+		t.Errorf("second open: %d windows, focused %d", len(opened), created["child-1"].focused)
+	}
+
+	// Unsaved edits are reported; saving and closing unlocks and refreshes.
+	child, _ := w.byName("child-1")
+	if got := w.openMerges(mainWindowName, true); len(got) != 0 {
+		t.Errorf("unsaved before an edit = %v", got)
+	}
+	child.SetDirty(true)
+	if got := w.openMerges(mainWindowName, true); len(got) != 1 {
+		t.Errorf("unsaved after an edit = %v", got)
+	}
+	if err := child.Save("merged\n"); err != nil {
+		t.Fatal(err)
+	}
+	created["child-1"].Close()
+	if len(events) != 2 || events[1] != changed {
+		t.Errorf("events after closing = %v", events)
+	}
+	if got := w.openMerges(mainWindowName, false); len(got) != 0 {
+		t.Errorf("open merges after closing = %v", got)
+	}
+	list, err := s.Conflicts()
+	if err != nil || list.Unresolved != 1 {
+		t.Errorf("after saving: %+v, %v", list, err)
+	}
+
+	// A resolved file cannot be opened.
+	if err := w.openMerge(mainWindowName, app, "a.txt"); !errors.Is(err, session.ErrNotConflicted) {
+		t.Errorf("opening a resolved file = %v, want ErrNotConflicted", err)
+	}
+	// Show changes refuses a text conflict.
+	if err := w.showChanges(mainWindowName, app, "sub/b.txt"); !errors.Is(err, session.ErrCannotOpen) {
+		t.Errorf("show changes of a text conflict = %v, want ErrCannotOpen", err)
+	}
+}

@@ -64,6 +64,7 @@ export function Compare(left: string, right: string): $CancellablePromise<merge$
 
 /**
  * Conflicts re-reads the calling window's conflicts (mergediff resolve).
+ * Open lists the files it has open in merge windows.
  */
 export function Conflicts(): $CancellablePromise<session$0.ConflictList> {
     return $Call.ByID(378483990);
@@ -124,6 +125,14 @@ export function OpenEntry(path: string): $CancellablePromise<void> {
 }
 
 /**
+ * OpenMerge opens a text conflict of the calling Conflicts window in a
+ * merge window of its own, or focuses the one already showing it.
+ */
+export function OpenMerge(path: string): $CancellablePromise<void> {
+    return $Call.ByID(3397542269, path);
+}
+
+/**
  * Quit closes the calling window. For the main window the process then
  * exits with code; a child window just closes.
  */
@@ -139,10 +148,33 @@ export function Save(result: string): $CancellablePromise<void> {
 }
 
 /**
+ * SetDirty records whether the calling merge window's result has unsaved
+ * edits.
+ */
+export function SetDirty(dirty: boolean): $CancellablePromise<void> {
+    return $Call.ByID(4117643367, dirty);
+}
+
+/**
  * Settings returns the effective settings of the calling window.
  */
 export function Settings(): $CancellablePromise<{ [_ in string]?: string } | null> {
     return $Call.ByID(3483087558);
+}
+
+/**
+ * ShowChanges opens a modify/delete conflict's changes in a diff window.
+ */
+export function ShowChanges(path: string): $CancellablePromise<void> {
+    return $Call.ByID(3598217195, path);
+}
+
+/**
+ * UnsavedMerges returns the files the calling window has open in merge
+ * windows with unsaved edits, so it can ask before closing them.
+ */
+export function UnsavedMerges(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(4088867322);
 }
 
 /**

@@ -19,6 +19,12 @@ export interface ConflictList {
      * Unresolved counts the rows not yet resolved.
      */
     "unresolved": number;
+
+    /**
+     * Open lists the paths open in merge windows (they cannot be accepted
+     * until those close). The window registry fills it in.
+     */
+    "open": string[] | null;
 }
 
 /**
@@ -58,6 +64,11 @@ export enum Mode {
      */
     $zero = "",
 
+    /**
+     * Resolve lists a Git working tree's merge conflicts (mergediff resolve).
+     */
+    Resolve = "resolve",
+
     Merge = "merge",
     Diff = "diff",
 
@@ -71,11 +82,6 @@ export enum Mode {
      * DirDiff lists the files that differ between two directories.
      */
     DirDiff = "dirdiff",
-
-    /**
-     * Resolve lists a Git working tree's merge conflicts (mergediff resolve).
-     */
-    Resolve = "resolve",
 };
 
 /**
@@ -118,4 +124,13 @@ export interface Session {
      * non-conflicting chunk (--auto-apply), so the UI marks them applied.
      */
     "autoApplied": boolean;
+
+    /**
+     * LocalLabel and RemoteLabel name the two sides in the pane headers
+     * when they are not files: branch names in a merge opened from the
+     * Conflicts window, "Base" and a branch in its Show changes diff.
+     * Empty means the headers show the file names.
+     */
+    "localLabel": string;
+    "remoteLabel": string;
 }

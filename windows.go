@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -55,6 +57,14 @@ type Windows struct {
 	quitApp func()
 	// settings are the effective settings, given to every child window.
 	settings map[string]string
+	// emit sends a custom event to the frontends. Set by runGUI.
+	emit func(event string)
+}
+
+// conflictsChangedEvent names the event that tells a Conflicts window
+// (window parent) to refresh: one of its merge windows opened or closed.
+func conflictsChangedEvent(parent string) string {
+	return "mergediff:conflicts-changed:" + parent
 }
 
 func newWindows() *Windows {
@@ -62,6 +72,7 @@ func newWindows() *Windows {
 		wins:      map[string]*winEntry{},
 		newWindow: func(name string, _ *session.Session, _ *App) windowHandle { return nopWindow(name) },
 		quitApp:   func() {},
+		emit:      func(string) {},
 	}
 }
 
@@ -157,6 +168,63 @@ func (w *Windows) openEntry(parent string, app *App, path string) error {
 // mergeKey is the child-window key of a conflicted file's merge window.
 func mergeKey(path string) string { return "merge:" + path }
 
+const mergeKeyPrefix = "merge:"
+
+// openMerge opens the text conflict at path, from Conflicts window parent,
+// in a merge window, or focuses the one already open. The Conflicts window
+// is told to refresh, so the row shows as locked.
+func (w *Windows) openMerge(parent string, app *App, path string) error {
+	if w.focusChild(parent, mergeKey(path)) {
+		return nil
+	}
+	sess, err := app.sess.MergeSession(path)
+	if err != nil {
+		return err
+	}
+	if err := w.openChild(parent, mergeKey(path), sess); err != nil {
+		return err
+	}
+	w.emit(conflictsChangedEvent(parent))
+	return nil
+}
+
+// showChanges opens a modify/delete conflict's changes (base against the
+// side that kept the file) in a diff window, or focuses the one open.
+func (w *Windows) showChanges(parent string, app *App, path string) error {
+	key := "changes:" + path
+	if w.focusChild(parent, key) {
+		return nil
+	}
+	sess, err := app.sess.ChangesSession(path)
+	if err != nil {
+		return err
+	}
+	return w.openChild(parent, key, sess)
+}
+
+// openMerges returns the paths parent has open in merge windows, sorted;
+// with dirtyOnly, only those whose result has unsaved edits.
+func (w *Windows) openMerges(parent string, dirtyOnly bool) []string {
+	w.mu.Lock()
+	var apps []*App
+	var paths []string
+	for _, e := range w.wins {
+		if e.parent == parent && strings.HasPrefix(e.key, mergeKeyPrefix) {
+			apps = append(apps, e.app)
+			paths = append(paths, strings.TrimPrefix(e.key, mergeKeyPrefix))
+		}
+	}
+	w.mu.Unlock()
+	out := []string{}
+	for i, a := range apps {
+		if !dirtyOnly || a.isDirty() {
+			out = append(out, paths[i])
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // errMergeOpen is returned when accepting a file whose merge window is open.
 var errMergeOpen = errors.New("its merge window is open; save or cancel it first")
 
@@ -226,10 +294,16 @@ func (w *Windows) children(parent string) []windowHandle {
 func (w *Windows) closed(name string) {
 	kids := w.children(name)
 	w.mu.Lock()
+	e := w.wins[name]
 	delete(w.wins, name)
 	w.mu.Unlock()
 	for _, h := range kids {
 		h.Close()
+	}
+	// A merge window closed (saved or cancelled): its row is unlocked and
+	// maybe resolved.
+	if e != nil && strings.HasPrefix(e.key, mergeKeyPrefix) {
+		w.emit(conflictsChangedEvent(e.parent))
 	}
 	if name == mainWindowName {
 		w.quitApp()
@@ -313,12 +387,55 @@ func (w *Windows) OpenEntry(ctx context.Context, path string) error {
 }
 
 // Conflicts re-reads the calling window's conflicts (mergediff resolve).
+// Open lists the files it has open in merge windows.
 func (w *Windows) Conflicts(ctx context.Context) (session.ConflictList, error) {
-	app, err := w.caller(ctx)
+	name, app, err := w.callerName(ctx)
 	if err != nil {
 		return session.ConflictList{}, err
 	}
-	return app.Conflicts()
+	list, err := app.Conflicts()
+	list.Open = w.openMerges(name, false)
+	return list, err
+}
+
+// OpenMerge opens a text conflict of the calling Conflicts window in a
+// merge window of its own, or focuses the one already showing it.
+func (w *Windows) OpenMerge(ctx context.Context, path string) error {
+	name, app, err := w.callerName(ctx)
+	if err != nil {
+		return err
+	}
+	return w.openMerge(name, app, path)
+}
+
+// ShowChanges opens a modify/delete conflict's changes in a diff window.
+func (w *Windows) ShowChanges(ctx context.Context, path string) error {
+	name, app, err := w.callerName(ctx)
+	if err != nil {
+		return err
+	}
+	return w.showChanges(name, app, path)
+}
+
+// UnsavedMerges returns the files the calling window has open in merge
+// windows with unsaved edits, so it can ask before closing them.
+func (w *Windows) UnsavedMerges(ctx context.Context) ([]string, error) {
+	name, _, err := w.callerName(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return w.openMerges(name, true), nil
+}
+
+// SetDirty records whether the calling merge window's result has unsaved
+// edits.
+func (w *Windows) SetDirty(ctx context.Context, dirty bool) error {
+	app, err := w.caller(ctx)
+	if err != nil {
+		return err
+	}
+	app.SetDirty(dirty)
+	return nil
 }
 
 // AcceptSide resolves the calling window's conflicts at paths by taking
@@ -329,7 +446,9 @@ func (w *Windows) AcceptSide(ctx context.Context, paths []string, side gitconfli
 	if err != nil {
 		return session.ConflictList{}, err
 	}
-	return w.acceptSide(name, app, paths, side)
+	list, err := w.acceptSide(name, app, paths, side)
+	list.Open = w.openMerges(name, false)
+	return list, err
 }
 
 // MergeCounts counts the conflicts and non-conflicting changes of a text

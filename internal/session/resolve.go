@@ -43,6 +43,9 @@ type ConflictList struct {
 	Rows      []ConflictRow         `json:"rows"`
 	// Unresolved counts the rows not yet resolved.
 	Unresolved int `json:"unresolved"`
+	// Open lists the paths open in merge windows (they cannot be accepted
+	// until those close). The window registry fills it in.
+	Open []string `json:"open"`
 }
 
 // MergeCounts describes a text conflict's merge, for the side panel.

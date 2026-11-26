@@ -179,6 +179,7 @@ func runGUI(sess *session.Session, cfg config.Config) int {
 	app.quit = wails.Quit
 	wins.quitApp = wails.Quit
 	wins.settings = app.settings
+	wins.emit = func(event string) { wails.Event.Emit(event) }
 	wins.newWindow = func(name string, sess *session.Session, app *App) windowHandle {
 		opts := windowOptions(sess, cfg)
 		opts.Name = name
