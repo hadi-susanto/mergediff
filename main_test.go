@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -210,8 +209,6 @@ func TestCloseGuard(t *testing.T) {
 		t.Fatal("after Quit the window must close")
 	}
 }
-
-func regexpMatch(pattern, s string) bool { return regexp.MustCompile(pattern).MatchString(s) }
 
 func TestWindowOptions(t *testing.T) {
 	sess := &session.Session{Title: "x.go"}
