@@ -13,7 +13,8 @@ import (
 
 // conflictRepo builds a repository whose main and feature branches change
 // files differently, then merges feature into main (stopping with
-// conflicts). files maps a path to its base, main and feature content.
+// conflicts). files maps a path to its base, main and feature content;
+// gone instead of content means the file does not exist there.
 func conflictRepo(t *testing.T, files map[string][3]string) string {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -39,6 +40,10 @@ func conflictRepo(t *testing.T, files map[string][3]string) string {
 	write := func(i int) {
 		for p, c := range files {
 			full := filepath.Join(dir, filepath.FromSlash(p))
+			if c[i] == gone {
+				os.Remove(full)
+				continue
+			}
 			os.MkdirAll(filepath.Dir(full), 0o755)
 			if err := os.WriteFile(full, []byte(c[i]), 0o644); err != nil {
 				t.Fatal(err)
@@ -52,13 +57,18 @@ func conflictRepo(t *testing.T, files map[string][3]string) string {
 	git(false, "commit", "-q", "-m", "base")
 	git(false, "checkout", "-q", "-b", "feature")
 	write(2)
-	git(false, "commit", "-q", "-am", "feature")
+	git(false, "add", "-A")
+	git(false, "commit", "-q", "-m", "feature")
 	git(false, "checkout", "-q", "main")
 	write(1)
-	git(false, "commit", "-q", "-am", "main")
+	git(false, "add", "-A")
+	git(false, "commit", "-q", "-m", "main")
 	git(true, "merge", "--no-edit", "feature")
 	return dir
 }
+
+// gone marks a file missing from one of conflictRepo's commits.
+const gone = "\x00gone"
 
 func gitIn(t *testing.T, dir string, args ...string) string {
 	t.Helper()
@@ -231,5 +241,116 @@ func TestAcceptUnknownSide(t *testing.T) {
 	}
 	if _, err := s.Accept([]string{"a.txt"}, "mine"); err == nil {
 		t.Error("unknown side: want an error")
+	}
+}
+
+func TestMergeSession(t *testing.T) {
+	dir := conflictRepo(t, map[string][3]string{
+		"a.txt":     {"one\ntwo\nthree\n", "one\nTWO main\nthree\nfour\n", "one\nTWO feature\nthree\n"},
+		"b.txt":     {"x\n", gone, "x changed\n"},
+		"crlf.txt":  {"a\r\nb\r\n", "a main\r\nb\r\n", "a feature\r\nb\r\n"},
+		"plain.txt": {"same\n", "same\n", "same\n"},
+	})
+	s, err := StartResolve(dir, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := s.MergeSession("a.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Mode != Merge || m.Base != "one\ntwo\nthree\n" || m.Local != "one\nTWO main\nthree\nfour\n" || m.Remote != "one\nTWO feature\nthree\n" {
+		t.Fatalf("texts: %+v", m)
+	}
+	if m.InitialResult != m.Base || m.AutoApplied {
+		t.Errorf("initial result should be base without --auto-apply")
+	}
+	if m.LocalLabel != "main" || m.RemoteLabel != "feature" {
+		t.Errorf("labels = %q, %q; want main, feature", m.LocalLabel, m.RemoteLabel)
+	}
+	if m.Title != "a.txt" || m.Language != "" {
+		t.Errorf("title %q language %q", m.Title, m.Language)
+	}
+	if err := m.Save("one\nmerged\nthree\n"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "a.txt")); string(got) != "one\nmerged\nthree\n" {
+		t.Errorf("working tree = %q", got)
+	}
+	if out := gitIn(t, dir, "ls-files", "-u", "--", "a.txt"); out != "" {
+		t.Errorf("still unmerged after save:\n%s", out)
+	}
+	if _, err := s.MergeSession("a.txt"); !errors.Is(err, ErrNotConflicted) {
+		t.Errorf("merge of a resolved file: %v, want ErrNotConflicted", err)
+	}
+	if _, err := s.MergeSession("b.txt"); !errors.Is(err, ErrCannotOpen) {
+		t.Errorf("merge of modify/delete: %v, want ErrCannotOpen", err)
+	}
+
+	// CRLF in the checkout: the merge keeps it.
+	c, err := s.MergeSession("crlf.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.EOL != "CRLF" || strings.Contains(c.Local, "\r") {
+		t.Errorf("EOL %s, local %q", c.EOL, c.Local)
+	}
+	if err := c.Save("a merged\nb\n"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "crlf.txt")); string(got) != "a merged\r\nb\r\n" {
+		t.Errorf("crlf working tree = %q", got)
+	}
+
+	// --auto-apply starts with the non-conflicting changes applied.
+	dir2 := conflictRepo(t, map[string][3]string{
+		"a.txt": {"one\ntwo\nthree\n", "one\nTWO main\nthree\nfour\n", "one\nTWO feature\nthree\n"},
+	})
+	s2, err := StartResolve(dir2, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m2, err := s2.MergeSession("a.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !m2.AutoApplied || m2.InitialResult != "one\ntwo\nthree\nfour\n" {
+		t.Errorf("auto-applied initial result = %q", m2.InitialResult)
+	}
+}
+
+func TestChangesSession(t *testing.T) {
+	dir := conflictRepo(t, map[string][3]string{
+		"theirs-deleted.txt": {"base\n", "base mine\n", gone},
+		"yours-deleted.txt":  {"base\n", gone, "base theirs\n"},
+		"both.txt":           {"1\n", "2\n", "3\n"},
+	})
+	s, err := StartResolve(dir, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ path, remote, label string }{
+		{"theirs-deleted.txt", "base mine\n", "main"},
+		{"yours-deleted.txt", "base theirs\n", "feature"},
+	} {
+		d, err := s.ChangesSession(tc.path)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.path, err)
+		}
+		if d.Mode != Diff || d.Local != "base\n" || d.Remote != tc.remote {
+			t.Errorf("%s: local %q remote %q", tc.path, d.Local, d.Remote)
+		}
+		if d.LocalLabel != "Base" || d.RemoteLabel != tc.label {
+			t.Errorf("%s: labels %q, %q", tc.path, d.LocalLabel, d.RemoteLabel)
+		}
+		if len(d.Chunks) == 0 {
+			t.Errorf("%s: no chunks", tc.path)
+		}
+	}
+	if _, err := s.ChangesSession("both.txt"); !errors.Is(err, ErrCannotOpen) {
+		t.Errorf("changes of a text conflict: %v, want ErrCannotOpen", err)
+	}
+	if out := gitIn(t, dir, "status", "--porcelain"); !strings.Contains(out, "UD theirs-deleted.txt") {
+		t.Errorf("opening changes must not touch the index:\n%s", out)
 	}
 }

@@ -52,9 +52,19 @@ type Session struct {
 	// AutoApplied reports that InitialResult already contains every
 	// non-conflicting chunk (--auto-apply), so the UI marks them applied.
 	AutoApplied bool `json:"autoApplied"`
+	// LocalLabel and RemoteLabel name the two sides in the pane headers
+	// when they are not files: branch names in a merge opened from the
+	// Conflicts window, "Base" and a branch in its Show changes diff.
+	// Empty means the headers show the file names.
+	LocalLabel  string `json:"localLabel"`
+	RemoteLabel string `json:"remoteLabel"`
 
 	eol    textio.EOL
 	output string
+	// saveTo, when set, saves the result instead of writing output: a
+	// merge opened from the Conflicts window writes the working-tree file
+	// and runs git add.
+	saveTo func(text string, eol textio.EOL) error
 	dir    *dirCompare   // dirdiff only
 	res    *resolveState // resolve only
 }
@@ -126,6 +136,11 @@ func LoadMerge(base, local, remote, output string, autoApply bool) (*Session, er
 	if err != nil {
 		return nil, fmt.Errorf("read REMOTE: %w", err)
 	}
+	return newMerge(b, l, r, []string{base, local, remote, output}, filepath.Base(output), output, autoApply), nil
+}
+
+// newMerge builds a merge session from the three decoded texts.
+func newMerge(b, l, r textio.File, paths []string, title, output string, autoApply bool) *Session {
 	bl, ll, rl := textio.SplitLines(b.Text), textio.SplitLines(l.Text), textio.SplitLines(r.Text)
 	chunks := merge.Merge(bl, ll, rl)
 	initial := b.Text
@@ -135,8 +150,8 @@ func LoadMerge(base, local, remote, output string, autoApply bool) (*Session, er
 	eol := textio.DetectEOL(l, b)
 	return &Session{
 		Mode:          Merge,
-		Paths:         []string{base, local, remote, output},
-		Title:         filepath.Base(output),
+		Paths:         paths,
+		Title:         title,
 		Base:          b.Text,
 		Local:         l.Text,
 		Remote:        r.Text,
@@ -147,7 +162,7 @@ func LoadMerge(base, local, remote, output string, autoApply bool) (*Session, er
 		AutoApplied:   autoApply,
 		eol:           eol,
 		output:        output,
-	}, nil
+	}
 }
 
 // Save writes the merge result (LF text, as the editor produces it) to
@@ -155,6 +170,9 @@ func LoadMerge(base, local, remote, output string, autoApply bool) (*Session, er
 func (s *Session) Save(result string) error {
 	if s.Mode != Merge {
 		return ErrNotMerge
+	}
+	if s.saveTo != nil {
+		return s.saveTo(result, s.eol)
 	}
 	if err := textio.WriteFile(s.output, result, s.eol); err != nil {
 		return fmt.Errorf("write MERGED: %w", err)
