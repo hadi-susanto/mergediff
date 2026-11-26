@@ -461,6 +461,16 @@ func (w *Windows) MergeCounts(ctx context.Context, path string) (session.MergeCo
 	return app.MergeCounts(path)
 }
 
+// Edited returns those of paths (conflicts of the calling window) whose
+// working-tree file was edited since Git stopped.
+func (w *Windows) Edited(ctx context.Context, paths []string) ([]string, error) {
+	app, err := w.caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return app.Edited(paths)
+}
+
 // Save writes the calling window's merge result.
 func (w *Windows) Save(ctx context.Context, result string) error {
 	app, err := w.caller(ctx)

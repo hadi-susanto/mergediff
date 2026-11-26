@@ -64,11 +64,6 @@ export enum Mode {
      */
     $zero = "",
 
-    /**
-     * Resolve lists a Git working tree's merge conflicts (mergediff resolve).
-     */
-    Resolve = "resolve",
-
     Merge = "merge",
     Diff = "diff",
 
@@ -82,6 +77,11 @@ export enum Mode {
      * DirDiff lists the files that differ between two directories.
      */
     DirDiff = "dirdiff",
+
+    /**
+     * Resolve lists a Git working tree's merge conflicts (mergediff resolve).
+     */
+    Resolve = "resolve",
 };
 
 /**
@@ -133,4 +133,10 @@ export interface Session {
      */
     "localLabel": string;
     "remoteLabel": string;
+
+    /**
+     * EditedOnDisk: the output file was edited since Git stopped (a merge
+     * opened from the Conflicts window), so saving asks first.
+     */
+    "editedOnDisk": boolean;
 }

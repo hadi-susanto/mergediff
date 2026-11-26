@@ -94,6 +94,14 @@ export function DirStats(): $CancellablePromise<dirdiff$0.StatsBatch> {
 }
 
 /**
+ * Edited returns those of paths (conflicts of the calling window) whose
+ * working-tree file was edited since Git stopped.
+ */
+export function Edited(paths: string[] | null): $CancellablePromise<string[] | null> {
+    return $Call.ByID(138835398, paths);
+}
+
+/**
  * GuardClose turns the calling window's close guard on or off.
  */
 export function GuardClose(on: boolean): $CancellablePromise<void> {

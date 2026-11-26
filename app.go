@@ -111,6 +111,11 @@ func (a *App) MergeCounts(path string) (session.MergeCounts, error) {
 	return a.sess.MergeCounts(path)
 }
 
+// Edited returns those of paths edited since Git stopped.
+func (a *App) Edited(paths []string) ([]string, error) {
+	return a.sess.Edited(paths)
+}
+
 // Save writes the merge result to MERGED with the original line endings.
 func (a *App) Save(result string) error {
 	return a.sess.Save(result)

@@ -262,10 +262,15 @@ func (s *Session) MergeSession(path string) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
+	edited, err := rs.repo.Edited(c)
+	if err != nil {
+		return nil, err
+	}
 	abs := rs.repo.Abs(path)
 	m := newMerge(base, yours, theirs, []string{abs, abs, abs, abs}, path, abs, rs.autoApply)
 	m.LocalLabel = label(op.YoursLabel, "yours")
 	m.RemoteLabel = label(op.TheirsLabel, "theirs")
+	m.EditedOnDisk = edited
 	repo := rs.repo
 	m.saveTo = func(text string, eol textio.EOL) error { return repo.SaveMerged(path, text, eol) }
 	return m, nil
@@ -326,4 +331,40 @@ func label(name, role string) string {
 		return role
 	}
 	return name
+}
+
+// Edited returns those of paths whose working-tree file was changed since
+// Git stopped (gitconflict.Repo.Edited), sorted: accepting a side or
+// saving a merge would replace those edits. Paths no longer unmerged are
+// left out.
+func (s *Session) Edited(paths []string) ([]string, error) {
+	rs, err := s.resolve()
+	if err != nil {
+		return nil, err
+	}
+	out := []string{}
+	if len(paths) == 0 {
+		return out, nil
+	}
+	cs, err := rs.repo.List(paths, rs.repo.Operation().Sides())
+	if err != nil {
+		return nil, err
+	}
+	want := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		want[p] = true
+	}
+	for i := range cs {
+		if !want[cs[i].Path] {
+			continue
+		}
+		e, err := rs.repo.Edited(&cs[i])
+		if err != nil {
+			return nil, err
+		}
+		if e {
+			out = append(out, cs[i].Path)
+		}
+	}
+	return out, nil
 }

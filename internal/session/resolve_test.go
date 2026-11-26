@@ -354,3 +354,29 @@ func TestChangesSession(t *testing.T) {
 		t.Errorf("opening changes must not touch the index:\n%s", out)
 	}
 }
+
+func TestEdited(t *testing.T) {
+	dir := conflictRepo(t, map[string][3]string{
+		"a.txt": {"1\n2\n3\n", "1\nM\n3\n", "1\nF\n3\n"},
+		"b.txt": {"1\n2\n3\n", "1\nM\n3\n", "1\nF\n3\n"},
+	})
+	s, err := StartResolve(dir, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.Edited([]string{"a.txt", "b.txt"}); err != nil || len(got) != 0 {
+		t.Fatalf("untouched: %v, %v", got, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "b.txt"), []byte("1\nhand\n3\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.Edited([]string{"a.txt", "b.txt"}); err != nil || len(got) != 1 || got[0] != "b.txt" {
+		t.Errorf("after editing b.txt: %v, %v", got, err)
+	}
+	if m, err := s.MergeSession("b.txt"); err != nil || !m.EditedOnDisk {
+		t.Errorf("merge of an edited file: EditedOnDisk false (%v)", err)
+	}
+	if m, err := s.MergeSession("a.txt"); err != nil || m.EditedOnDisk {
+		t.Errorf("merge of an untouched file: EditedOnDisk true (%v)", err)
+	}
+}

@@ -58,6 +58,9 @@ type Session struct {
 	// Empty means the headers show the file names.
 	LocalLabel  string `json:"localLabel"`
 	RemoteLabel string `json:"remoteLabel"`
+	// EditedOnDisk: the output file was edited since Git stopped (a merge
+	// opened from the Conflicts window), so saving asks first.
+	EditedOnDisk bool `json:"editedOnDisk"`
 
 	eol    textio.EOL
 	output string
