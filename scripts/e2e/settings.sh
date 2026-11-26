@@ -32,16 +32,26 @@ toolbar_brightness() {
 }
 maximized() { xprop -id "$(window_id "$TITLE")" _NET_WM_STATE | grep -q _NET_WM_STATE_MAXIMIZED_VERT; }
 
-# samples: toolbar brightness of every frame in the first 3 s of the window.
+# samples: toolbar brightness and colour of every frame in the first 3 s of
+# the window ("37 #262624" per line).
 samples() { ui samples "$TITLE" 3 >"$WORK/samples"; }
 # brightest / darkest: of the painted frames (0 = not drawn yet, skipped).
-brightest() { awk '$1 > 0' "$WORK/samples" | sort -n | tail -1; }
-darkest() { awk '$1 > 0' "$WORK/samples" | sort -n | head -1; }
+brightest() { awk '$1 > 0 {print $1}' "$WORK/samples" | sort -n | tail -1; }
+darkest() { awk '$1 > 0 {print $1}' "$WORK/samples" | sort -n | head -1; }
+# painted COLOUR: some frame shows the toolbar in exactly COLOUR. Frames
+# before the page draws show the GTK theme's window background, whose
+# brightness depends on the desktop theme; matching the toolbar's exact
+# colour (--chrome-bg) tells a frame of the other theme from it.
+painted() { awk -v c="$1" '$2 == c' "$WORK/samples" | grep -q .; }
+not_painted() { ! painted "$1"; }
+LIGHT_TOOLBAR='#f4f3ef' # --chrome-bg, light
+DARK_TOOLBAR='#262624'  # --chrome-bg, dark
 
 section "config: dark theme, maximized window"
 start_app "$WORK/a.txt" "$WORK/b.txt"
 samples
-check "no light frame while starting ($(wc -l <"$WORK/samples") frames, brightest $(brightest))" test "$(brightest)" -lt 96
+check "no light-theme frame while starting ($(wc -l <"$WORK/samples") frames, brightest $(brightest))" not_painted "$LIGHT_TOOLBAR"
+check "the dark toolbar is painted" painted "$DARK_TOOLBAR"
 ui wait sleep 1.5
 focus "$TITLE"
 check "window starts maximized" maximized
@@ -54,9 +64,8 @@ check "exit 0" test $RC -eq 0
 section "flags override the config: --theme light --window-state normal"
 start_app --theme light "$WORK/a.txt" "$WORK/b.txt" --window-state=normal
 samples
-# Frames before the page draws show the GTK theme's window background, so
-# only the toolbar's dark colour (#262624, brightness 37) counts as a flash.
-check "no dark-theme frame while starting (darkest $(darkest))" bash -c "! awk '\$1 >= 30 && \$1 <= 44' '$WORK/samples' | grep -q ."
+check "no dark-theme frame while starting (darkest $(darkest))" not_painted "$DARK_TOOLBAR"
+check "the light toolbar is painted" painted "$LIGHT_TOOLBAR"
 ui wait sleep 1.5
 focus "$TITLE"
 check "window is not maximized" bash -c "! xprop -id '$(window_id "$TITLE")' _NET_WM_STATE | grep -q MAXIMIZED"
