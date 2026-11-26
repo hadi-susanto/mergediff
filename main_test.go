@@ -12,66 +12,75 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"github.com/hadi-susanto/mergediff/internal/command"
 	"github.com/hadi-susanto/mergediff/internal/config"
 	"github.com/hadi-susanto/mergediff/internal/session"
 )
 
-// stubGUI replaces the window with a function that records the session.
-// It also points the config file at a fresh temporary directory.
-func stubGUI(t *testing.T, code int) **session.Session {
+// fakeEnv is an Env whose window records the session it gets and returns
+// code, and whose config file is in a fresh temporary directory.
+func fakeEnv(t *testing.T, code int) (command.Env, *bytes.Buffer, *bytes.Buffer, **session.Session) {
 	t.Helper()
-	got, _ := stubGUIConfig(t, code)
-	return got
-}
-
-// stubGUIConfig is stubGUI that also records the settings the window got,
-// and returns the config file path.
-func stubGUIConfig(t *testing.T, code int) (**session.Session, *config.Config) {
-	t.Helper()
-	var got *session.Session
-	var cfg config.Config
-	old, oldPath := startGUI, configPath
+	var stdout, stderr bytes.Buffer
+	var opened *session.Session
 	path := filepath.Join(t.TempDir(), "mergediff", "config.toml")
-	configPath = func() (string, error) { return path, nil }
-	startGUI = func(s *session.Session, c config.Config) int { got, cfg = s, c; return code }
-	t.Cleanup(func() { startGUI, configPath = old, oldPath })
-	return &got, &cfg
+	env := command.Env{
+		Stdout:     &stdout,
+		Stderr:     &stderr,
+		Getwd:      os.Getwd,
+		ConfigPath: func() (string, error) { return path, nil },
+		Version:    "2026-11-19 (a1b2c3d)",
+		OpenWindow: func(s *session.Session, _ config.Config) int { opened = s; return code },
+	}
+	return env, &stdout, &stderr, &opened
 }
 
-func TestSettingsFromConfigAndFlags(t *testing.T) {
+// TestRun checks the wiring: parse, select, run, and how errors become
+// output and exit codes. The commands themselves are tested in
+// internal/command.
+func TestRun(t *testing.T) {
 	dir := t.TempDir()
 	a := writeFile(t, dir, "a.txt", "x\n")
-	opened, cfg := stubGUIConfig(t, 0)
-	path, _ := configPath()
-	run := func(args ...string) (int, string) {
-		var stdout, stderr bytes.Buffer
-		*opened = nil
-		code := run(args, &stdout, &stderr)
-		return code, stderr.String()
+	tests := []struct {
+		name     string
+		args     []string
+		code     int
+		stdout   string // exact, unless empty
+		stderr   string // prefix
+		usage    string // substring of stderr that shows which usage text ("" = none)
+		isWindow bool
+	}{
+		{name: "help", args: []string{"--help"}, code: 0, stdout: command.Usage},
+		{name: "version", args: []string{"version"}, code: 0, stdout: "mergediff 2026-11-19 (a1b2c3d)\n"},
+		{name: "parse error", args: []string{"a", "b", "--nope"}, code: 2,
+			stderr: "mergediff: unknown option --nope\n\nUsage:", usage: "mergediff resolve [--auto-apply]"},
+		{name: "select error", args: []string{"a"}, code: 2,
+			stderr: "mergediff: expected 2 files or directories", usage: "mergediff resolve [--auto-apply]"},
+		{name: "settings usage error", args: []string{"settings", "frob"}, code: 2,
+			stderr: "mergediff: unknown settings command \"frob\"\n\nUsage:\n  mergediff settings [list]", usage: "mergediff settings unset KEY"},
+		{name: "run error", args: []string{a, filepath.Join(dir, "missing")}, code: 2, stderr: "mergediff: read RIGHT: "},
+		{name: "window", args: []string{a, a}, code: 7, isWindow: true},
 	}
-
-	if code, _ := run(a, a); code != 0 || cfg.Theme() != config.ThemeSystem || cfg.WindowState() != config.WindowNormal {
-		t.Fatalf("no config file: code %d, %v", code, cfg.Values())
-	}
-	os.MkdirAll(filepath.Dir(path), 0o755)
-	writeFile(t, filepath.Dir(path), "config.toml", "theme = \"dark\"\nwindow-state = \"maximized\"\n")
-	if code, _ := run(a, a); code != 0 || cfg.Theme() != config.ThemeDark || cfg.WindowState() != config.WindowMaximized {
-		t.Fatalf("config file: code %d, %v", code, cfg.Values())
-	}
-	if code, _ := run("--theme", "light", a, a, "--window-state=normal"); code != 0 ||
-		cfg.Theme() != config.ThemeLight || cfg.SourceOf(config.KeyTheme) != config.FromFlag ||
-		cfg.WindowState() != config.WindowNormal {
-		t.Fatalf("flags override the file: code %d, %v", code, cfg.Values())
-	}
-
-	writeFile(t, filepath.Dir(path), "config.toml", "theme = \"blue\"\n")
-	code, stderr := run(a, a)
-	if code != exitError || *opened != nil || !strings.Contains(stderr, "mergediff: config "+path+": ") ||
-		strings.Contains(stderr, "Usage:") {
-		t.Fatalf("bad config: code %d, opened %v, stderr %q", code, *opened != nil, stderr)
-	}
-	if code, _ := run("--version"); code != 0 {
-		t.Fatalf("--version must not read the config, code %d", code)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env, stdout, stderr, opened := fakeEnv(t, 7)
+			if code := run(tt.args, env); code != tt.code {
+				t.Fatalf("exit code %d, want %d (stderr %q)", code, tt.code, stderr.String())
+			}
+			if (*opened != nil) != tt.isWindow {
+				t.Fatalf("window opened = %v", *opened != nil)
+			}
+			if tt.stdout != "" && stdout.String() != tt.stdout {
+				t.Errorf("stdout %q, want %q", stdout.String(), tt.stdout)
+			}
+			if !strings.HasPrefix(stderr.String(), tt.stderr) {
+				t.Errorf("stderr %q, want it to start with %q", stderr.String(), tt.stderr)
+			}
+			if got := strings.Contains(stderr.String(), "Usage:"); got != (tt.usage != "") ||
+				!strings.Contains(stderr.String(), tt.usage) {
+				t.Errorf("stderr %q, want usage %q", stderr.String(), tt.usage)
+			}
+		})
 	}
 }
 
@@ -84,83 +93,13 @@ func writeFile(t *testing.T, dir, name, content string) string {
 	return p
 }
 
-func TestRunWithoutWindow(t *testing.T) {
-	dir := t.TempDir()
-	a := writeFile(t, dir, "a.txt", "x\n")
-	bin := writeFile(t, dir, "bin", "\x00")
-	tests := []struct {
-		name       string
-		args       []string
-		code       int
-		stdout     string // substring
-		stderr     string // substring
-		usageShown bool
-	}{
-		{name: "help", args: []string{"--help"}, code: 0, stdout: "Usage:"},
-		{name: "version", args: []string{"--version"}, code: 0, stdout: "mergediff dev (unknown)\n"},
-		{name: "output without paths", args: []string{"-o", "m"}, code: 2, stderr: "need BASE LOCAL REMOTE", usageShown: true},
-		{name: "bad option", args: []string{"a", "b", "--nope"}, code: 2, stderr: "unknown option --nope", usageShown: true},
-		{name: "missing file", args: []string{a, filepath.Join(dir, "missing")}, code: 2, stderr: "mergediff: read RIGHT: "},
-		{name: "binary file", args: []string{bin, a}, code: 2, stderr: "file looks binary"},
-		{name: "merge missing local", args: []string{a, filepath.Join(dir, "nope"), a, "-o", "m"}, code: 2, stderr: "read LOCAL: "},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			opened := stubGUI(t, 99)
-			var stdout, stderr bytes.Buffer
-			if code := run(tt.args, &stdout, &stderr); code != tt.code {
-				t.Fatalf("exit code %d, want %d (stderr %q)", code, tt.code, stderr.String())
-			}
-			if *opened != nil {
-				t.Fatal("window opened")
-			}
-			if !strings.Contains(stdout.String(), tt.stdout) || !strings.Contains(stderr.String(), tt.stderr) {
-				t.Fatalf("stdout %q, stderr %q", stdout.String(), stderr.String())
-			}
-			if got := strings.Contains(stderr.String(), "Usage:"); got != tt.usageShown {
-				t.Fatalf("usage shown = %v, want %v", got, tt.usageShown)
-			}
-		})
-	}
-}
-
-func TestRunOpensWindow(t *testing.T) {
-	dir := t.TempDir()
-	a := writeFile(t, dir, "a.go", "x\n")
-	b := writeFile(t, dir, "b.go", "y\n")
-
-	opened := stubGUI(t, 7)
-	var stdout, stderr bytes.Buffer
-	if code := run([]string{a, b}, &stdout, &stderr); code != 7 {
-		t.Fatalf("exit code %d, want the GUI's code 7", code)
-	}
-	if s := *opened; s == nil || s.Mode != session.Diff || s.Language != "go" {
-		t.Fatalf("diff session = %+v", s)
-	}
-
-	out := filepath.Join(dir, "out.go")
-	if code := run([]string{"", a, b, "-o", out, "--auto-apply"}, &stdout, &stderr); code != 7 {
-		t.Fatalf("merge exit code %d (stderr %q)", code, stderr.String())
-	}
-	if s := *opened; s.Mode != session.Merge || s.Title != "out.go" {
-		t.Fatalf("merge session = %+v", s)
-	}
-
-	if code := run(nil, &stdout, &stderr); code != 7 {
-		t.Fatalf("scratch exit code %d (stderr %q)", code, stderr.String())
-	}
-	if s := *opened; s.Mode != session.Scratch {
-		t.Fatalf("no args: session = %+v, want scratch", s)
-	}
-}
-
 func TestAppExitCodes(t *testing.T) {
 	diffSess := &session.Session{Mode: session.Diff}
 	mergeSess := &session.Session{Mode: session.Merge}
-	if c := newApp(diffSess).code(); c != exitOK {
+	if c := newApp(diffSess).code(); c != command.ExitOK {
 		t.Errorf("diff default code %d, want 0", c)
 	}
-	if c := newApp(mergeSess).code(); c != exitCancel {
+	if c := newApp(mergeSess).code(); c != command.ExitCancel {
 		t.Errorf("merge default code %d, want 1", c)
 	}
 	for in, want := range map[int]int{0: 0, 1: 1, 2: 2, 5: 2, -1: 2} {
@@ -266,7 +205,7 @@ func TestCloseGuard(t *testing.T) {
 
 	// Quit turns the guard off.
 	app.quit = func() {}
-	app.Quit(exitCancel)
+	app.Quit(command.ExitCancel)
 	if app.interceptClose(t0) {
 		t.Fatal("after Quit the window must close")
 	}
@@ -315,52 +254,7 @@ func TestAppCompare(t *testing.T) {
 	if err != nil || len(chunks) != 1 || chunks[0].Kind != "remote" {
 		t.Fatalf("Compare = %+v, %v", chunks, err)
 	}
-	if c := app.code(); c != exitOK {
+	if c := app.code(); c != command.ExitOK {
 		t.Errorf("scratch default exit code %d, want 0", c)
-	}
-}
-
-func TestRunDirectories(t *testing.T) {
-	dir := t.TempDir()
-	left, right := filepath.Join(dir, "left"), filepath.Join(dir, "right")
-	os.Mkdir(left, 0o755)
-	os.Mkdir(right, 0o755)
-	writeFile(t, left, "a.txt", "1\n")
-	writeFile(t, right, "a.txt", "2\n")
-	file := writeFile(t, dir, "f.txt", "x\n")
-	opened := stubGUI(t, exitOK)
-
-	var stdout, stderr bytes.Buffer
-	if code := run([]string{left, right}, &stdout, &stderr); code != exitOK {
-		t.Fatalf("two directories: exit %d, stderr %q", code, stderr.String())
-	}
-	s := *opened
-	if s == nil || s.Mode != session.DirDiff {
-		t.Fatalf("two directories opened %+v, want a dirdiff session", s)
-	}
-	if entries, err := s.DirEntries(); err != nil || len(entries) != 1 || entries[0].Path != "a.txt" {
-		t.Fatalf("dirdiff entries %+v, %v; want a.txt", entries, err)
-	}
-
-	for _, tc := range []struct {
-		args []string
-		want string
-	}{
-		{[]string{left, file}, "LEFT " + left + " is a directory but RIGHT " + file + " is a file"},
-		{[]string{file, right}, "LEFT " + file + " is a file but RIGHT " + right + " is a directory"},
-	} {
-		*opened = nil
-		stderr.Reset()
-		code := run(tc.args, &stdout, &stderr)
-		if code != exitError || *opened != nil || !strings.Contains(stderr.String(), tc.want) || !strings.Contains(stderr.String(), "Usage:") {
-			t.Errorf("run(%q): exit %d, opened %v, stderr %q; want exit 2, usage and %q", tc.args, code, *opened != nil, stderr.String(), tc.want)
-		}
-	}
-
-	// A missing path is a file that cannot be read: an I/O error, not a usage error.
-	*opened = nil
-	stderr.Reset()
-	if code := run([]string{filepath.Join(dir, "missing"), file}, &stdout, &stderr); code != exitError || strings.Contains(stderr.String(), "Usage:") {
-		t.Errorf("missing LEFT: exit %d, stderr %q; want exit 2 without usage", code, stderr.String())
 	}
 }

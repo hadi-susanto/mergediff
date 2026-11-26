@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"embed"
 	"errors"
 	"fmt"
@@ -13,6 +14,8 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
+	"github.com/hadi-susanto/mergediff/internal/cliargs"
+	"github.com/hadi-susanto/mergediff/internal/command"
 	"github.com/hadi-susanto/mergediff/internal/config"
 	"github.com/hadi-susanto/mergediff/internal/session"
 )
@@ -27,112 +30,52 @@ func main() {
 	defer func() {
 		if r := recover(); r != nil {
 			reportCrash(os.Stderr, "panic", r, debug.Stack())
-			os.Exit(exitError)
+			os.Exit(command.ExitError)
 		}
 	}()
-	os.Exit(run(devArgs(os.Args[1:]), os.Stdout, os.Stderr))
+	os.Exit(run(devArgs(os.Args[1:]), command.Env{
+		Stdout:     os.Stdout,
+		Stderr:     os.Stderr,
+		Getwd:      os.Getwd,
+		ConfigPath: config.Path,
+		Version:    Version(),
+		OpenWindow: runGUI,
+	}))
 }
 
-// startGUI opens the window and blocks until it closes, returning the exit
-// code. It is a variable so tests can run everything up to the window.
-var startGUI = runGUI
-
-// run handles the command line and returns the process exit code. Bad
-// arguments and unreadable files are reported before any window opens.
-func run(args []string, stdout, stderr io.Writer) int {
-	opts, err := parseArgs(args)
+// run parses the command line, selects the command and runs it, returning
+// the process exit code. Bad arguments and unreadable files are reported
+// before any window opens. Tests call it with a fake Env.
+func run(args []string, env command.Env) int {
+	opt, err := cliargs.Parse(args)
 	if err != nil {
-		printUsageError(stderr, err)
-		return exitError
+		return report(env.Stderr, err)
 	}
-	switch opts.cmd {
-	case cmdHelp:
-		fmt.Fprint(stdout, usage)
-		return exitOK
-	case cmdVersion:
-		fmt.Fprintf(stdout, "mergediff %s\n", Version())
-		return exitOK
-	case cmdSettings:
-		return runSettings(opts.settingsArgs, stdout, stderr)
-	}
-
-	var sess *session.Session
-	switch opts.cmd {
-	case cmdMerge:
-		sess, err = session.LoadMerge(opts.base, opts.local, opts.remote, opts.output, opts.autoApply)
-	case cmdDiff:
-		var dirs bool
-		if dirs, err = bothDirs(opts.left, opts.right); err != nil {
-			printUsageError(stderr, err)
-			return exitError
-		}
-		if dirs {
-			sess, err = session.StartDirDiff(opts.left, opts.right)
-		} else {
-			sess, err = session.LoadDiff(opts.left, opts.right)
-		}
-	case cmdScratch:
-		sess = session.NewScratch()
-	case cmdResolve:
-		var cwd string
-		if cwd, err = os.Getwd(); err == nil {
-			sess, err = session.StartResolve(cwd, opts.paths, opts.autoApply)
-		}
-		if errors.Is(err, session.ErrNoConflicts) {
-			fmt.Fprintf(stdout, "mergediff: %v\n", err)
-			return exitOK
-		}
-	}
+	cmd, err := command.Select(opt)
 	if err != nil {
-		fmt.Fprintf(stderr, "mergediff: %v\n", err)
-		return exitError
+		return report(env.Stderr, err)
 	}
-	cfg, err := loadSettings(opts.settings)
+	code, err := cmd.Run(env)
 	if err != nil {
-		fmt.Fprintf(stderr, "mergediff: %v\n", err)
-		return exitError
+		return report(env.Stderr, err)
 	}
-	return startGUI(sess, cfg)
+	return code
 }
 
-// bothDirs reports whether LEFT and RIGHT are both directories (a
-// directory diff). One directory and one file is a usage error. A path
-// that cannot be read counts as a file, so loading it reports the error.
-func bothDirs(left, right string) (bool, error) {
-	l, r := isDir(left), isDir(right)
+// report is the only place errors become output and exit code 2: a usage
+// error with the usage text, any other error alone.
+func report(w io.Writer, err error) int {
+	var cu *command.UsageError
+	var pu *cliargs.UsageError
 	switch {
-	case l && !r:
-		return false, usagef("LEFT %s is a directory but RIGHT %s is a file; compare two files or two directories", left, right)
-	case r && !l:
-		return false, usagef("LEFT %s is a file but RIGHT %s is a directory; compare two files or two directories", left, right)
+	case errors.As(err, &cu):
+		fmt.Fprintf(w, "mergediff: %s\n\n%s", cu.Msg, cmp.Or(cu.Usage, command.Usage))
+	case errors.As(err, &pu):
+		fmt.Fprintf(w, "mergediff: %v\n\n%s", err, command.Usage)
+	default:
+		fmt.Fprintf(w, "mergediff: %v\n", err)
 	}
-	return l && r, nil
-}
-
-func isDir(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
-}
-
-// configPath locates the config file; a variable so tests can redirect it.
-var configPath = config.Path
-
-// loadSettings returns the config file's settings overridden by the
-// command-line flags. Without a config directory (e.g. no home directory)
-// the defaults apply: settings are optional and must not block a merge.
-func loadSettings(flags []setting) (config.Config, error) {
-	cfg := config.Defaults()
-	if path, err := configPath(); err == nil {
-		if cfg, err = config.Load(path); err != nil {
-			return config.Config{}, err
-		}
-	}
-	for _, f := range flags {
-		if err := cfg.Override(f.key, f.value, config.FromFlag); err != nil {
-			return config.Config{}, err // parseArgs already validated; a registry bug
-		}
-	}
-	return cfg, nil
+	return command.ExitError
 }
 
 // closeRequestedEvent names the event that tells a window's frontend its
@@ -163,7 +106,7 @@ func runGUI(sess *session.Session, cfg config.Config) int {
 		// report them and end the program instead (see CLAUDE.md).
 		PanicHandler: func(d *application.PanicDetails) {
 			reportCrash(os.Stderr, "panic in bound method", d.Error, []byte(d.FullStackTrace))
-			os.Exit(exitError)
+			os.Exit(command.ExitError)
 		},
 		// Wails exits with 1 after a fatal error, which would read as
 		// "cancelled" to Git; exit with 2 first.
@@ -171,7 +114,7 @@ func runGUI(sess *session.Session, cfg config.Config) int {
 			var fatal *application.FatalError
 			if errors.As(err, &fatal) {
 				reportCrash(os.Stderr, "fatal error", err, debug.Stack())
-				os.Exit(exitError)
+				os.Exit(command.ExitError)
 			}
 			fmt.Fprintf(os.Stderr, "mergediff: %v\n", err)
 		},
@@ -202,7 +145,7 @@ func runGUI(sess *session.Session, cfg config.Config) int {
 
 	if err := wails.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "mergediff: %v\n", err)
-		return exitError
+		return command.ExitError
 	}
 	return app.code()
 }

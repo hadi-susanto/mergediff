@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/hadi-susanto/mergediff/internal/command"
 	"github.com/hadi-susanto/mergediff/internal/session"
 )
 
@@ -75,7 +76,7 @@ func TestWindowsOpenChild(t *testing.T) {
 	}
 
 	// A child's Quit closes only that window.
-	childApp.Quit(exitOK)
+	childApp.Quit(command.ExitOK)
 	if child.closed != 1 {
 		t.Errorf("child closed %d times after Quit, want 1", child.closed)
 	}
@@ -142,8 +143,8 @@ func TestWindowsChildDoesNotAffectMainExitCode(t *testing.T) {
 	mainQuits := 0
 	mainApp.quit = func() { mainQuits++ }
 	w.openMain(mainApp)
-	if c := mainApp.code(); c != exitCancel {
-		t.Fatalf("main exit code before any action = %d, want %d", c, exitCancel)
+	if c := mainApp.code(); c != command.ExitCancel {
+		t.Fatalf("main exit code before any action = %d, want %d", c, command.ExitCancel)
 	}
 
 	if err := w.openChild(mainWindowName, "first", load("child1.out")); err != nil {
@@ -159,7 +160,7 @@ func TestWindowsChildDoesNotAffectMainExitCode(t *testing.T) {
 	if got, err := os.ReadFile(filepath.Join(dir, "child1.out")); err != nil || string(got) != "merged\n" {
 		t.Fatalf("child saved %q, %v; want %q", got, err, "merged\n")
 	}
-	child.Quit(exitOK)
+	child.Quit(command.ExitOK)
 
 	// A child closed by its close button (no Quit).
 	if err := w.openChild(mainWindowName, "second", load("child2.out")); err != nil {
@@ -167,8 +168,8 @@ func TestWindowsChildDoesNotAffectMainExitCode(t *testing.T) {
 	}
 	created["child-2"].Close()
 
-	if c := mainApp.code(); c != exitCancel {
-		t.Errorf("main exit code after child save/quit/close = %d, want %d", c, exitCancel)
+	if c := mainApp.code(); c != command.ExitCancel {
+		t.Errorf("main exit code after child save/quit/close = %d, want %d", c, command.ExitCancel)
 	}
 	if mainQuits != 0 || *quits != 0 {
 		t.Errorf("children ended the main window (%d) or the application (%d)", mainQuits, *quits)
@@ -177,8 +178,8 @@ func TestWindowsChildDoesNotAffectMainExitCode(t *testing.T) {
 		t.Errorf("the main MERGED file was written by a child: %v", err)
 	}
 
-	mainApp.Quit(exitOK)
-	if c := mainApp.code(); c != exitOK || mainQuits != 1 {
+	mainApp.Quit(command.ExitOK)
+	if c := mainApp.code(); c != command.ExitOK || mainQuits != 1 {
 		t.Errorf("main Quit(0): code %d, quits %d; want 0, 1", c, mainQuits)
 	}
 }

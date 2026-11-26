@@ -1,79 +1,37 @@
 package main
 
 import (
-	"bytes"
 	"errors"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/hadi-susanto/mergediff/internal/command"
 	"github.com/hadi-susanto/mergediff/internal/gitconflict"
 	"github.com/hadi-susanto/mergediff/internal/session"
 	"github.com/hadi-susanto/mergediff/internal/testrepo"
 )
 
-func TestRunResolve(t *testing.T) {
+// TestResolveExitCode checks that a resolve window's exit code comes from
+// Git when it closes.
+func TestResolveExitCode(t *testing.T) {
 	dir := testrepo.Conflicted(t)
-	opened := stubGUI(t, 7)
-	var stdout, stderr bytes.Buffer
-
-	t.Chdir(filepath.Join(dir, "sub"))
-	if code := run([]string{"resolve", "--auto-apply"}, &stdout, &stderr); code != 7 {
-		t.Fatalf("exit code %d (stderr %q)", code, stderr.String())
+	s, err := session.StartResolve(dir, nil, false)
+	if err != nil {
+		t.Fatal(err)
 	}
-	s := *opened
-	if s == nil || s.Mode != session.Resolve || !strings.HasPrefix(s.Title, "Resolve conflicts · ") {
-		t.Fatalf("session = %+v", s)
-	}
-	list, err := s.Conflicts()
-	if err != nil || len(list.Rows) != 2 {
-		t.Fatalf("Conflicts = %+v, %v", list, err)
-	}
-
-	// The exit code comes from Git when the window closes.
 	app := newApp(s)
-	if c := app.code(); c != exitCancel {
+	if c := app.code(); c != command.ExitCancel {
 		t.Errorf("code with conflicts left = %d, want 1", c)
 	}
 	if _, err := s.Accept([]string{"a.txt", "sub/b.txt"}, gitconflict.Yours); err != nil {
 		t.Fatal(err)
 	}
-	if c := app.code(); c != exitOK {
+	if c := app.code(); c != command.ExitOK {
 		t.Errorf("code with none left = %d, want 0", c)
 	}
-	app.Quit(exitError)
-	if c := app.code(); c != exitError {
+	app.Quit(command.ExitError)
+	if c := app.code(); c != command.ExitError {
 		t.Errorf("code after Quit(2) = %d, want 2", c)
-	}
-
-	// Nothing left: a message, exit 0, no window.
-	*opened = nil
-	stdout.Reset()
-	if code := run([]string{"resolve"}, &stdout, &stderr); code != exitOK || *opened != nil ||
-		stdout.String() != "mergediff: no conflicts to resolve\n" {
-		t.Errorf("no conflicts: code %d, opened %v, stdout %q", code, *opened != nil, stdout.String())
-	}
-}
-
-func TestRunResolveErrors(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git not installed")
-	}
-	opened := stubGUI(t, 7)
-	var stdout, stderr bytes.Buffer
-	t.Chdir(t.TempDir())
-	if code := run([]string{"resolve"}, &stdout, &stderr); code != exitError || *opened != nil ||
-		!strings.Contains(stderr.String(), "not inside a Git working tree") || strings.Contains(stderr.String(), "Usage:") {
-		t.Errorf("outside a repository: code %d, stderr %q", code, stderr.String())
-	}
-
-	dir := testrepo.Conflicted(t)
-	t.Chdir(dir)
-	stderr.Reset()
-	if code := run([]string{"resolve", "../x"}, &stdout, &stderr); code != exitError ||
-		!strings.Contains(stderr.String(), "outside the repository") {
-		t.Errorf("path outside: code %d, stderr %q", code, stderr.String())
 	}
 }
 
