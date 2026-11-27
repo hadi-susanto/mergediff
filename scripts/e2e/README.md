@@ -56,7 +56,9 @@ XWayland is unverified. The app itself is not X11-specific.
 - `settings.sh` — `mergediff settings` (set keeps comments, bad values
   leave the file alone), a dark theme and maximized window from the config
   file, `--theme` / `--window-state` overriding it, no frame painted in the
-  wrong theme at startup, a broken config (exit 2)
+  wrong theme at startup (the other theme's exact toolbar colour, so the GTK
+  theme's background before the first paint does not count), a broken
+  config (exit 2)
 - `scratch.sh` — `mergediff` without arguments: typing into both panes,
   Refresh by F5, Ctrl+Enter and the button, the out-of-date state after an
   edit, Esc not closing, Close exiting 0

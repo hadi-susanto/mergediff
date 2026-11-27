@@ -31,12 +31,14 @@ func (d Diff) Run(env Env) (int, error) {
 	if err != nil {
 		return ExitError, err
 	}
-	var sess *session.Session
 	if dirs {
-		sess, err = session.StartDirDiff(d.left, d.right)
-	} else {
-		sess, err = session.LoadDiff(d.left, d.right)
+		sess, err := session.StartDirDiff(d.left, d.right)
+		if err != nil {
+			return ExitError, err
+		}
+		return openWindow(env, sess, d.settings)
 	}
+	sess, err := session.LoadDiff(d.left, d.right)
 	if err != nil {
 		return ExitError, err
 	}

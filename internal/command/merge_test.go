@@ -26,8 +26,8 @@ func TestMergeOpensWindow(t *testing.T) {
 	if code, err := cmd.Run(f.env); code != 7 || err != nil {
 		t.Fatalf("exit code %d, %v", code, err)
 	}
-	if s := f.opened; s == nil || s.Mode != session.Merge || s.Title != "out.go" || !s.AutoApplied {
-		t.Fatalf("merge session = %+v", s)
+	if s, ok := f.opened.(*session.MergeSession); !ok || s.View().Title != "out.go" || !s.View().Merge.AutoApplied {
+		t.Fatalf("merge session = %#v", f.opened)
 	}
 	if f.cfg.Theme() != config.ThemeDark {
 		t.Errorf("theme %q, want the flag's dark", f.cfg.Theme())

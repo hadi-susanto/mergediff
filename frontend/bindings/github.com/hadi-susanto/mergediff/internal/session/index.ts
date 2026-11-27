@@ -9,5 +9,7 @@ export type {
     ConflictList,
     ConflictRow,
     MergeCounts,
-    Session
+    MergeView,
+    Texts,
+    View
 } from "./models.js";

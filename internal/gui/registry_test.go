@@ -1,12 +1,14 @@
-package main
+package gui
 
 import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/hadi-susanto/mergediff/internal/command"
+	"github.com/hadi-susanto/mergediff/internal/gitconflict"
 	"github.com/hadi-susanto/mergediff/internal/session"
 )
 
@@ -33,7 +35,7 @@ func fakeWindows() (*Windows, map[string]*fakeWindow, *int) {
 	w := newWindows()
 	created := map[string]*fakeWindow{}
 	quits := 0
-	w.newWindow = func(name string, _ *session.Session, _ *App) windowHandle {
+	w.newWindow = func(name string, _ session.Session, _ *window) windowHandle {
 		f := &fakeWindow{name: name, wins: w}
 		created[name] = f
 		return f
@@ -42,14 +44,28 @@ func fakeWindows() (*Windows, map[string]*fakeWindow, *int) {
 	return w, created, &quits
 }
 
-func diffSession() *session.Session { return &session.Session{Mode: session.Diff} }
+// fakeSession is a session.Session with a fixed View. Its ExitCode
+// records its arguments and returns the code.
+type fakeSession struct {
+	view          session.View
+	gotCode       int
+	gotQuit, used bool
+}
+
+func (f *fakeSession) View() session.View { return f.view }
+func (f *fakeSession) ExitCode(code int, quit bool) int {
+	f.gotCode, f.gotQuit, f.used = code, quit, true
+	return code
+}
+
+func diffSession() *fakeSession { return &fakeSession{view: session.View{Mode: session.Diff}} }
 
 func TestWindowsOpenChild(t *testing.T) {
 	w, created, _ := fakeWindows()
-	mainApp := newApp(diffSession())
-	w.openMain(mainApp)
-	if got, err := w.byName(mainWindowName); err != nil || got != mainApp {
-		t.Fatalf("byName(main) = %p, %v; want the main App", got, err)
+	mainWin := newWindowState(diffSession())
+	w.openMain(mainWin)
+	if got, err := w.byName(mainWindowName); err != nil || got != mainWin {
+		t.Fatalf("byName(main) = %p, %v; want the main window state", got, err)
 	}
 
 	if err := w.openChild(mainWindowName, "a/b.txt", diffSession()); err != nil {
@@ -62,9 +78,9 @@ func TestWindowsOpenChild(t *testing.T) {
 	if child == nil {
 		t.Fatalf("no window child-1; created %v", created)
 	}
-	childApp, err := w.byName("child-1")
-	if err != nil || childApp == mainApp {
-		t.Fatalf("byName(child-1) = %p, %v; want its own App", childApp, err)
+	childWin, err := w.byName("child-1")
+	if err != nil || childWin == mainWin {
+		t.Fatalf("byName(child-1) = %p, %v; want its own state", childWin, err)
 	}
 
 	// Opening the same key again focuses the existing window.
@@ -76,7 +92,7 @@ func TestWindowsOpenChild(t *testing.T) {
 	}
 
 	// A child's Quit closes only that window.
-	childApp.Quit(command.ExitOK)
+	childWin.Quit(command.ExitOK)
 	if child.closed != 1 {
 		t.Errorf("child closed %d times after Quit, want 1", child.closed)
 	}
@@ -97,7 +113,7 @@ func TestWindowsOpenChildUnknownParent(t *testing.T) {
 
 func TestWindowsMainClosesChildren(t *testing.T) {
 	w, created, quits := fakeWindows()
-	w.openMain(newApp(diffSession()))
+	w.openMain(newWindowState(diffSession()))
 	for _, key := range []string{"a", "b"} {
 		if err := w.openChild(mainWindowName, key, diffSession()); err != nil {
 			t.Fatal(err)
@@ -130,7 +146,7 @@ func TestWindowsChildDoesNotAffectMainExitCode(t *testing.T) {
 		}
 		return p
 	}
-	load := func(out string) *session.Session {
+	load := func(out string) *session.MergeSession {
 		s, err := session.LoadMerge(write("base", "a\n"), write("local", "b\n"), write("remote", "c\n"), filepath.Join(dir, out), false)
 		if err != nil {
 			t.Fatal(err)
@@ -139,11 +155,11 @@ func TestWindowsChildDoesNotAffectMainExitCode(t *testing.T) {
 	}
 
 	w, created, quits := fakeWindows()
-	mainApp := newApp(load("main.out"))
+	mainWin := newWindowState(load("main.out"))
 	mainQuits := 0
-	mainApp.quit = func() { mainQuits++ }
-	w.openMain(mainApp)
-	if c := mainApp.code(); c != command.ExitCancel {
+	mainWin.quit = func() { mainQuits++ }
+	w.openMain(mainWin)
+	if c := mainWin.code(); c != command.ExitCancel {
 		t.Fatalf("main exit code before any action = %d, want %d", c, command.ExitCancel)
 	}
 
@@ -154,7 +170,7 @@ func TestWindowsChildDoesNotAffectMainExitCode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := child.Save("merged\n"); err != nil {
+	if err := child.sess.(*session.MergeSession).Save("merged\n"); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := os.ReadFile(filepath.Join(dir, "child1.out")); err != nil || string(got) != "merged\n" {
@@ -168,7 +184,7 @@ func TestWindowsChildDoesNotAffectMainExitCode(t *testing.T) {
 	}
 	created["child-2"].Close()
 
-	if c := mainApp.code(); c != command.ExitCancel {
+	if c := mainWin.code(); c != command.ExitCancel {
 		t.Errorf("main exit code after child save/quit/close = %d, want %d", c, command.ExitCancel)
 	}
 	if mainQuits != 0 || *quits != 0 {
@@ -178,8 +194,8 @@ func TestWindowsChildDoesNotAffectMainExitCode(t *testing.T) {
 		t.Errorf("the main MERGED file was written by a child: %v", err)
 	}
 
-	mainApp.Quit(command.ExitOK)
-	if c := mainApp.code(); c != command.ExitOK || mainQuits != 1 {
+	mainWin.Quit(command.ExitOK)
+	if c := mainWin.code(); c != command.ExitOK || mainQuits != 1 {
 		t.Errorf("main Quit(0): code %d, quits %d; want 0, 1", c, mainQuits)
 	}
 }
@@ -197,33 +213,63 @@ func TestWindowsOpenEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 	w, created, _ := fakeWindows()
-	mainApp := newApp(sess)
-	w.openMain(mainApp)
+	mainWin := newWindowState(sess)
+	w.openMain(mainWin)
 
-	if err := w.openEntry(mainWindowName, mainApp, "m.txt"); err != nil {
+	if err := w.openEntry(mainWindowName, mainWin, "m.txt"); err != nil {
 		t.Fatal(err)
 	}
 	child, err := w.byName("child-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, _ := child.LoadSession()
-	if s.Mode != session.Diff || s.Local != "a\n" || s.Remote != "b\n" || s.Title != "m.txt" {
+	s := child.sess.View()
+	if _, ok := child.sess.(*session.DiffSession); !ok || s.Text.Left != "a\n" || s.Text.Right != "b\n" || s.Title != "m.txt" {
 		t.Errorf("child session = %+v", s)
 	}
 
 	// Opening it again focuses the open window.
-	if err := w.openEntry(mainWindowName, mainApp, "m.txt"); err != nil {
+	if err := w.openEntry(mainWindowName, mainWin, "m.txt"); err != nil {
 		t.Fatal(err)
 	}
 	if len(created) != 2 || created["child-1"].focused != 1 {
 		t.Errorf("reopening: %d windows, focused %d; want 2 windows, focused once", len(created), created["child-1"].focused)
 	}
 
-	if err := w.openEntry(mainWindowName, mainApp, "bin"); err == nil {
+	if err := w.openEntry(mainWindowName, mainWin, "bin"); err == nil {
 		t.Error("opening a binary file succeeded")
 	}
 	if len(created) != 2 {
 		t.Errorf("a refused file opened a window (%d windows)", len(created))
+	}
+}
+
+// TestWrongModeCalls: a window asking for what its session does not serve
+// gets errWrongMode naming the call, and no window opens.
+func TestWrongModeCalls(t *testing.T) {
+	w, created, _ := fakeWindows()
+	win := newWindowState(diffSession())
+	w.openMain(win)
+	for name, call := range map[string]func() error{
+		"OpenEntry":   func() error { return w.openEntry(mainWindowName, win, "a.txt") },
+		"OpenMerge":   func() error { return w.openMerge(mainWindowName, win, "a.txt") },
+		"ShowChanges": func() error { return w.showChanges(mainWindowName, win, "a.txt") },
+		"AcceptSide": func() error {
+			_, err := w.acceptSide(mainWindowName, win, []string{"a.txt"}, gitconflict.Yours)
+			return err
+		},
+	} {
+		if err := call(); !errors.Is(err, errWrongMode) || !strings.HasPrefix(err.Error(), name+": ") {
+			t.Errorf("%s from a diff window = %v, want errWrongMode naming it", name, err)
+		}
+	}
+	if len(created) != 1 {
+		t.Errorf("windows created: %d, want only the main one", len(created))
+	}
+	if _, err := as[*session.MergeSession](win, "Save"); !errors.Is(err, errWrongMode) {
+		t.Errorf("Save from a diff window = %v, want errWrongMode", err)
+	}
+	if _, err := as[*session.DirDiffSession](win, "DirEntries"); !errors.Is(err, errWrongMode) {
+		t.Errorf("DirEntries from a diff window = %v, want errWrongMode", err)
 	}
 }

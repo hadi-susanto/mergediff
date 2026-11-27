@@ -16,7 +16,8 @@ Usage: ui.py STEP [STEP ...]
   pixel X Y            print the colour at screen X,Y as #rrggbb
   find TEXT            wait until some element's text contains TEXT (exit 1 if not)
   samples TITLE SECS   wait for a window titled TITLE, then print the brightness
-                       (0-255) of its toolbar every frame for SECS seconds
+                       (0-255) and colour (#rrggbb) of its toolbar every frame
+                       for SECS seconds
   sleep SECONDS
 """
 import sys
@@ -215,8 +216,8 @@ def find_window(d, title, timeout=30):
 
 
 def samples(title, seconds):
-    """Brightness of the window's toolbar from the moment the window exists:
-    catches a frame painted in the wrong theme at startup."""
+    """Brightness and colour of the window's toolbar from the moment the
+    window exists: catches a frame painted in the wrong theme at startup."""
     from Xlib import X
 
     d = xdisplay()
@@ -226,7 +227,8 @@ def samples(title, seconds):
         try:
             geo = w.get_geometry()
             raw = w.get_image(geo.width // 2, 20, 1, 1, X.ZPixmap, 0xFFFFFFFF).data
-            print((raw[0] + raw[1] + raw[2]) // 3, flush=True)
+            b, g, r = raw[0], raw[1], raw[2]  # 32-bit TrueColor: BGRX
+            print((r + g + b) // 3, f"#{r:02x}{g:02x}{b:02x}", flush=True)
         except Exception:
             pass  # not viewable yet
         time.sleep(0.01)

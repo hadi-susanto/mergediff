@@ -39,7 +39,7 @@ type Env struct {
 	Version string
 	// OpenWindow opens the main window and blocks until it closes,
 	// returning the exit code.
-	OpenWindow func(*session.Session, config.Config) int
+	OpenWindow func(session.Session, config.Config) int
 }
 
 // UsageError is a command-line mistake. main prints "mergediff: Msg", a

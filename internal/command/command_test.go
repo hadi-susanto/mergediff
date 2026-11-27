@@ -18,7 +18,7 @@ import (
 type fake struct {
 	env            Env
 	stdout, stderr bytes.Buffer
-	opened         *session.Session
+	opened         session.Session
 	cfg            config.Config
 	configPath     string
 }
@@ -32,7 +32,7 @@ func newFake(t *testing.T, code int) *fake {
 		Getwd:      os.Getwd,
 		ConfigPath: func() (string, error) { return f.configPath, nil },
 		Version:    "2026-11-19 (a1b2c3d)",
-		OpenWindow: func(s *session.Session, c config.Config) int { f.opened, f.cfg = s, c; return code },
+		OpenWindow: func(s session.Session, c config.Config) int { f.opened, f.cfg = s, c; return code },
 	}
 	return f
 }

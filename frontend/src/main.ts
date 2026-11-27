@@ -1,7 +1,7 @@
 import { Clipboard, Events, Window } from "@wailsio/runtime";
-import * as Backend from "../bindings/github.com/hadi-susanto/mergediff/windows";
+import * as Backend from "../bindings/github.com/hadi-susanto/mergediff/internal/gui/windows";
 import type { Side } from "../bindings/github.com/hadi-susanto/mergediff/internal/gitconflict/models";
-import { Mode, type Session } from "../bindings/github.com/hadi-susanto/mergediff/internal/session/models";
+import { Mode, type Texts, type View } from "../bindings/github.com/hadi-susanto/mergediff/internal/session/models";
 import { showError } from "./dialogs.ts";
 import { renderDiffView, type DiffPaneSpec } from "./diffview.ts";
 import { renderDirView } from "./dirview.ts";
@@ -69,14 +69,14 @@ function quit(code: number): void {
 }
 
 /** The generated Chunk type uses enums; the frontend logic uses string unions. */
-function chunksOf(session: Session): MergeChunk[] {
-  return (session.chunks ?? []) as unknown as MergeChunk[];
+function chunksOf(text: Texts): MergeChunk[] {
+  return (text.chunks ?? []) as unknown as MergeChunk[];
 }
 
-function setStatus(session: Session, version: string, left: string): void {
+function setStatus(text: Texts, version: string, left: string): void {
   document.getElementById("status-left")!.textContent = left;
-  const language = LANGUAGE_NAMES[session.language] ?? "Plain text";
-  document.getElementById("status-right")!.textContent = `${language} · ${session.eol} · UTF-8 · mergediff ${version}`;
+  const language = LANGUAGE_NAMES[text.language] ?? "Plain text";
+  document.getElementById("status-right")!.textContent = `${language} · ${text.eol} · UTF-8 · mergediff ${version}`;
 }
 
 function charDiff(left: string, right: string): Promise<CharSpan[]> {
@@ -94,7 +94,7 @@ async function main(): Promise<void> {
   Backend.Settings()
     .then((settings) => setTheme(settings?.theme))
     .catch((err) => console.error("loading settings failed", err));
-  let session: Session;
+  let session: View;
   let version: string;
   try {
     [session, version] = await Promise.all([Backend.LoadSession(), Backend.Version()]);
@@ -141,32 +141,43 @@ async function main(): Promise<void> {
     });
     return;
   }
+  // Diff, scratch and merge windows show text panes.
+  const text = session.text;
+  if (!text) {
+    showError(`Nothing to show for a ${session.mode} window`, () => quit(EXIT_ERROR));
+    return;
+  }
   let rendered: Rendered;
   if (session.mode === Mode.Diff || session.mode === Mode.Scratch) {
     const scratch = session.mode === Mode.Scratch;
     const [leftPath = "", rightPath = ""] = session.paths ?? [];
     rendered = renderDiffView({
-      left: scratch ? { title: "Left", tooltip: "", text: "" } : paneSpec(leftPath, session.local, session.localLabel),
-      right: scratch ? { title: "Right", tooltip: "", text: "" } : paneSpec(rightPath, session.remote, session.remoteLabel),
-      chunks: chunksOf(session),
+      left: scratch ? { title: "Left", tooltip: "", text: "" } : paneSpec(leftPath, text.left, text.leftLabel),
+      right: scratch ? { title: "Right", tooltip: "", text: "" } : paneSpec(rightPath, text.right, text.rightLabel),
+      chunks: chunksOf(text),
       compare: scratch ? (l, r) => Backend.Compare(l, r).then((c) => (c ?? []) as unknown as MergeChunk[]) : undefined,
       charDiff,
       close: () => quit(EXIT_OK),
       status: (text) => (document.getElementById("status-left")!.textContent = text),
     });
   } else {
+    const merge = session.merge;
+    if (!merge) {
+      showError("Nothing to merge", () => quit(EXIT_ERROR));
+      return;
+    }
     rendered = renderMerge(
       {
         paths: session.paths ?? [],
-        base: session.base,
-        local: session.local,
-        remote: session.remote,
-        chunks: chunksOf(session),
-        initialResult: session.initialResult,
-        autoApplied: session.autoApplied,
-        localLabel: session.localLabel,
-        remoteLabel: session.remoteLabel,
-        editedOnDisk: session.editedOnDisk,
+        base: merge.base,
+        local: text.left,
+        remote: text.right,
+        chunks: chunksOf(text),
+        initialResult: merge.initialResult,
+        autoApplied: merge.autoApplied,
+        localLabel: text.leftLabel,
+        remoteLabel: text.rightLabel,
+        editedOnDisk: merge.editedOnDisk,
       },
       {
         save: (result) => Backend.Save(result),
@@ -179,8 +190,8 @@ async function main(): Promise<void> {
       },
     );
   }
-  setStatus(session, version, rendered.status);
-  setLanguage(rendered.views, session.language).catch((err) => console.error("loading the language failed", err));
+  setStatus(text, version, rendered.status);
+  setLanguage(rendered.views, text.language).catch((err) => console.error("loading the language failed", err));
 }
 
 void main();

@@ -43,11 +43,9 @@ Build **mergediff**: a lightweight, cross-platform, open-source **3-way merge** 
 mergediff/
   go.mod                  # module github.com/hadi-susanto/mergediff
   main.go                 # Wiring only: cliargs.Parse → command.Select → Run(env) → os.Exit(code);
-                          #   report (errors → stderr, exit 2); runGUI (the window, Env.OpenWindow);
-                          #   //go:embed all:frontend/dist
+                          #   report (errors → stderr, exit 2); gui.Options (assets, version, crash
+                          #   hooks) for Env.OpenWindow = gui.Run; //go:embed all:frontend/dist
   version.go              # versionDate / commit vars set via -ldflags, Version() string
-  app.go                  # App: one window's state (session, exit code, close guard); thin adapters
-  windows.go              # Windows: the bound Wails service; one App per window, child windows
   crash.go                # Crash report to stderr + crash log (see "Panics")
   console_windows.go      # Windows GUI binary: attach to the parent console for CLI output
   release_test.go         # Release workflow tag filter + scripts/ci checks
@@ -64,10 +62,15 @@ mergediff/
                           #   (help, version, settings, diff, scratch, merge, resolve), Env, usage text,
                           #   exit codes; window.go loads settings and opens the window via Env
     testrepo/             # Tests only: a Git repository stopped by a conflicted merge
+    gui/                  # The window layer, the only internal package importing Wails:
+                          #   run.go (Run, Options), options.go (window options), registry.go
+                          #   (Windows: windows by name, child windows), api.go (every bound
+                          #   method), window.go (one window's state), events.go (event names)
     config/               # Settings registry, TOML config file, flag/file/default layering
-    session/              # Builds a Session from CLI paths (load, detect, merge); scratch Compare;
-                          #   directory comparison in the background (StartDirDiff, LoadPair);
-                          #   resolve sessions (resolve.go: StartResolve, merge / changes windows)
+    session/              # What a window shows: the Session interface (View, ExitCode) and one
+                          #   type per file: DiffSession, ScratchSession (Compare), MergeSession,
+                          #   DirDiffSession (comparison in the background), ResolveSession;
+                          #   view.go: View / Texts / MergeView, the JSON the frontend gets
     gitconflict/          # Git access for `resolve`: repo, unmerged list, stages, accept, operation,
                           #   labels, the rebase swap (sides.go), edited-since-stopped check
     textio/               # Reading/writing files, line endings, binary detection
@@ -118,6 +121,7 @@ mergediff/
   01-directory-diff.md    # Feature 1 instructions (done)
   02-resolve-conflicts.md # Feature 2 instructions (done)
   03-refactor.md          # Refactor 1 instructions: command line (done)
+  04-refactor-gui.md      # Refactor 2 instructions: internal/gui and typed sessions (done)
 ```
 
 ### Wails v3 setup
@@ -153,9 +157,10 @@ Standard Wails v3 project layout: `package main` at the repo root, built by
   `frontend/public/.gitkeep` by Vite) so `//go:embed all:frontend/dist`
   compiles before the frontend is built; `go vet ./...` and `go test ./...`
   must work on a fresh clone.
-- **Exit codes:** Wails has no "quit with code" API. `App.Quit(code)` stores
-  the code and calls `app.Quit()`; `main` calls `os.Exit(code)` after
-  `app.Run()` returns.
+- **Exit codes:** Wails has no "quit with code" API. The bound `Quit(code)`
+  stores the code in the window's state and closes the window; for the main
+  window `gui.Run` returns the session's `ExitCode` after the Wails app ends,
+  and `main` calls `os.Exit` with it.
 - Phase 2 starts by proving this setup (a minimal window, a version-injected
   build, `go test ./...` on a fresh clone). If any part doesn't work, stop and
   explain the problem and options.
@@ -165,12 +170,13 @@ Rules for the root `main` package:
 - Only startup and wiring: `run(args, env)` parses the arguments
   (`cliargs.Parse`), picks the command (`command.Select`), runs it with the
   real `command.Env` and exits with its code; `report` maps errors to output
-  and exit `2`. `runGUI` configures and runs Wails and is the Env's
-  `OpenWindow`. Command logic lives in `internal/command`, not here.
-- `App` methods are thin adapters that call `internal/...` packages; no
-  diff/merge logic lives in the root package.
+  and exit `2`. `Env.OpenWindow` is `gui.Run` with `gui.Options` (embedded
+  assets, version, crash hooks). Command logic lives in `internal/command`,
+  the window layer in `internal/gui`, not here.
+- No diff/merge or window logic lives in the root package.
 - `internal/` packages must not import Wails, so they stay testable with plain
-  `go test`.
+  `go test` — except `internal/gui`, the only one that does. It never prints
+  or exits: errors and crashes go to `gui.Options` hooks that `main` sets.
 
 ## Command-line interface
 
@@ -375,17 +381,20 @@ libraries; adding one needs approval like any other dependency.
     own, e.g. the settings usage, or the general one) + exit `2`
   - I/O, binary (`textio.ErrBinary`), invalid UTF-8 (`textio.ErrNotUTF8`)
     → `mergediff: <wrapped message>` on stderr, exit `2`
-- Errors from bound `App` methods reach the frontend as rejected promises.
+- Errors from bound methods reach the frontend as rejected promises.
   The frontend shows the message in a dialog and never fails silently.
   A failed `Save` keeps the window open with the result untouched, so the
   user can retry or cancel.
 
 ### Panics
 
-- `main()` defers a recover handler, and `application.Options.PanicHandler` is
-  set for panics in bound methods. (Wails v3.1.0 recovers those itself and
-  turns them into a rejected promise; without our handler the app would keep
-  running.) Both write the panic value and stack trace to stderr **and** to a
+- `main()` defers a recover handler, and `gui.Run` sets
+  `application.Options.PanicHandler` (panics in bound methods) and
+  `ErrorHandler` (fatal Wails errors) to call `gui.Options.OnPanic` /
+  `OnFatal`, which `main` sets. (Wails v3.1.0 recovers bound-method panics
+  itself and turns them into a rejected promise, and exits with `1` after a
+  fatal error; without the hooks the app would keep running, or look
+  "cancelled" to Git.) They write the panic value and stack trace to stderr **and** to a
   crash log (`<os.UserCacheDir()>/mergediff/crash-<timestamp>.log`, because a
   GUI app may have no visible stderr), then exit `2`.
 - Never recover a panic just to continue; it always ends the program after
@@ -447,7 +456,7 @@ Character-level diff: for paired changed lines, return spans of inserted/deleted
 - One registry, `config.Registry`: each `Setting` has a key, a one-line doc,
   a default, its allowed values and whether it is also a command-line flag.
   Loading, validation, `mergediff settings`, the flags, the usage text and
-  `App.Settings` all follow it. **Adding a setting = adding a registry entry**
+  the bound `Settings` all follow it. **Adding a setting = adding a registry entry**
   (plus a typed accessor on `Config` if Go code reads it).
 - Current settings: `theme` (`system` | `light` | `dark`) and `window-state`
   (`normal` | `maximized`).
@@ -463,56 +472,81 @@ Character-level diff: for paired changed lines, return spans of inserted/deleted
   keys dark colours on `:root[data-theme="dark"]`. The native title bar
   follows on Windows and macOS; Wails v3.1.0 has no Linux option.
 
-## Bound API (`windows.go`, `app.go`)
+## Bound API (`internal/gui`)
 
-`Windows` is registered as the Wails v3 service
+`Windows` (`registry.go`) is registered as the Wails v3 service
 (`application.NewService(wins)` in `application.Options.Services`). Its exported
-methods are available to the frontend through the generated `frontend/bindings/`.
+methods (`api.go`) are available to the frontend through the generated
+`frontend/bindings/github.com/hadi-susanto/mergediff/internal/gui/`.
 
 ### One session per window
 
-Every window has its own `App` (session, exit code, close guard). `Windows`
-keeps them by **window name** (`main`, `child-1`, …) and registers a window
-before creating it, so its frontend can never call in first. Each bound
-method takes `ctx context.Context` first (Wails supplies it and leaves it out
-of the generated bindings) and forwards to the **calling window's** `App`,
-found with `ctx.Value(application.WindowKey)`. (01-directory-diff.md proposed
-an id in the window URL; the calling window was chosen instead: no id to
-pass around, and a window cannot reach another window's session.)
+Every window has its own state (`window.go`: session, settings, exit code,
+close guard, dirty flag). `Windows` keeps them by **window name** (`main`,
+`child-1`, …) and registers a window before creating it, so its frontend can
+never call in first. Each bound method takes `ctx context.Context` first
+(Wails supplies it and leaves it out of the generated bindings) and uses the
+**calling window's** session, found with `ctx.Value(application.WindowKey)`.
+(01-directory-diff.md proposed an id in the window URL; the calling window
+was chosen instead: no id to pass around, and a window cannot reach another
+window's session.)
 
 - The **main window** (opened from the command line) decides the process exit
-  code, exactly as before; closing it closes every child window and ends the
-  application.
+  code: when it closes, `gui.Run` returns `sess.ExitCode(code, quit)` (what
+  `Quit` set, and whether it was called). Closing it closes every child
+  window and ends the application.
 - **Child windows** (`Windows.openChild(parent, key, sess)`) have their own
-  `App` whose `Quit` closes only that window; their exit code is ignored.
+  state whose `Quit` closes only that window; their exit code is ignored.
   One child per `key` and parent: opening it again focuses the open window.
   Closing a window closes the windows it opened.
 - Wails delivers custom events to **every** window, so per-window events
-  carry the window name: `mergediff:close-requested:<name>`; the frontend
-  gets its name with `Window.Name()`.
+  carry the window name (`events.go`): `mergediff:close-requested:<name>`;
+  the frontend gets its name with `Window.Name()`.
+- A bound call the window's kind of session does not serve (e.g. `DirEntries`
+  from a merge window) returns an error wrapping `errWrongMode`, naming the
+  call (`as[T]` in `api.go`). The frontend never makes such calls.
+
+### Sessions (`internal/session`)
 
 ```go
-type Session struct {
-	Mode          string   `json:"mode"` // "merge" | "diff" | "scratch" | "dirdiff" | "resolve"
-	Paths         []string `json:"paths"` // dirdiff: absolute LEFT, RIGHT
-	Base          string   `json:"base"`
-	Local         string   `json:"local"`
-	Remote        string   `json:"remote"`
-	Chunks        []Chunk  `json:"chunks"`
-	InitialResult string   `json:"initialResult"`
-	Language      string   `json:"language"` // derived from file extension
-	Title         string   `json:"title"`    // file name(s) for the window title
-	EOL           string   `json:"eol"`      // "LF" | "CRLF", for the status bar
-	AutoApplied   bool     `json:"autoApplied"` // --auto-apply: InitialResult already has the non-conflicting chunks
-	LocalLabel    string   `json:"localLabel"`  // resolve windows: branch names (merge) or "Base" (Show changes)
-	RemoteLabel   string   `json:"remoteLabel"` //   for the pane headers; "" = file names
-	EditedOnDisk  bool     `json:"editedOnDisk"` // resolve merge window: the file was edited since Git stopped
+type Session interface {
+	View() View                      // what the frontend gets (LoadSession)
+	ExitCode(code int, quit bool) int // the main window's exit code when it closes
 }
+// DiffSession (files, a directory diff's entry, Show changes), ScratchSession,
+// MergeSession (Save), DirDiffSession (DirEntries, DirStats, DirProgress, Entry),
+// ResolveSession (Conflicts, Accept, Remaining, MergeCounts, Edited, Merge, Changes)
 
+type View struct {
+	Mode  Mode       `json:"mode"`  // "merge" | "diff" | "scratch" | "dirdiff" | "resolve"
+	Title string     `json:"title"` // file name(s) for the window title
+	Paths []string   `json:"paths"` // merge: BASE LOCAL REMOTE MERGED; diff, dirdiff: LEFT RIGHT; resolve: top level
+	Text  *Texts     `json:"text"`  // diff, scratch, merge: the two side panes; null otherwise
+	Merge *MergeView `json:"merge"` // merge only
+}
+type Texts struct { // LEFT / RIGHT in a diff, LOCAL (yours) / REMOTE (theirs) in a merge
+	Left, Right           string  // json "left", "right"
+	LeftLabel, RightLabel string  // pane headers when not file names (branches, "Base")
+	Chunks                []Chunk // diff: unchanged / remote
+	Language, EOL         string  // from the file extension; "LF" | "CRLF"
+}
+type MergeView struct {
+	Base, InitialResult string
+	AutoApplied         bool // --auto-apply: InitialResult already has the non-conflicting chunks
+	EditedOnDisk        bool // resolve merge window: the file was edited since Git stopped
+}
+```
+
+`ExitCode`: a diff, scratch or directory diff window returns what `Quit` set
+(`0` when closed without it); a merge closed without `Quit` is `1`
+(cancelled); a Conflicts window asks Git (`Remaining`: `0` none left within
+its paths, `1` some, `2` when Git fails; a `Quit(2)` stays `2`).
+
+```go
 // All on *Windows; ctx is the calling window.
-LoadSession(ctx) (Session, error)
+LoadSession(ctx) (session.View, error)
 CharDiff(left, right string) []Span       // Span is defined in internal/diff
-Save(ctx, result string) error            // writes MERGED with original line endings
+Save(ctx, result string) error            // merge: writes MERGED with original line endings
 Quit(ctx, code int) error                 // closes the window; the main window exits with code
 Version() string                          // build version for the status bar
 GuardClose(ctx, on bool) error            // merge mode: route the window's close button to the frontend
@@ -534,16 +568,16 @@ SetDirty(ctx, dirty bool) error           // merge window: result edited since l
 ```
 
 **Resolve sessions** (`session.StartResolve`, `internal/session/resolve.go`):
-the window's main session holds the `gitconflict.Repo`, the `PATH` limits
-and the rows. Every `Conflicts` call re-runs `ls-files --unmerged`: rows
-listed before stay (no longer unmerged = `Resolved`), new ones are added.
-`MergeSession(path)` builds a merge session from the stages (yours / theirs
+a `ResolveSession` holds the `gitconflict.Repo`, the `PATH` limits and the
+rows. Every `Conflicts` call re-runs `ls-files --unmerged`: rows listed
+before stay (no longer unmerged = `Resolved`), new ones are added.
+`Merge(path)` builds a `MergeSession` from the stages (yours / theirs
 through `Sides`, so rebases are swapped) whose `Save` calls
-`Repo.SaveMerged` (write + `git add`); `ChangesSession(path)` a diff of base
-against the side that kept a modify/delete file. When a merge window opens
-or closes, `Windows` emits `mergediff:conflicts-changed:<parent>` and the
-list refreshes (locks, resolved rows). The main window's exit code is asked
-from Git when it closes (`Session.Remaining`).
+`Repo.SaveMerged` (write + `git add`); `Changes(path)` a `DiffSession` of
+base against the side that kept a modify/delete file. When a merge window
+opens or closes, `Windows` emits `mergediff:conflicts-changed:<parent>` and
+the list refreshes (locks, resolved rows). The main window's exit code is
+asked from Git when it closes (`ResolveSession.ExitCode`).
 
 **`internal/gitconflict`** (no Wails imports): every call is
 `git -C <top> -c core.quotepath=off --literal-pathspecs …` with `LC_ALL=C`.
@@ -561,17 +595,15 @@ Cancel flow (confirms if the result was edited). If a request is not
 acknowledged within 2 s, the next close goes through, so the window can never
 get stuck behind a broken frontend.
 
-`Session` lives in `internal/session`. In diff mode `Local` is LEFT, `Remote`
-is RIGHT and `Base` is empty; chunks are `unchanged` or `remote`. Closing the
-window without `Quit` exits `0` for a diff or directory diff and `1`
-(cancelled) for a merge.
+In a diff, `Text.Left` is LEFT and `Text.Right` is RIGHT, and there is no
+`Merge` part; chunks are `unchanged` or `remote`.
 
 **Directory diff** (`session.StartDirDiff`): before the window opens only the
 roots are checked (they exist and are directories; made absolute). The
 comparison (`dirdiff.Compare`) then runs in the background, followed by the
 line counts (`dirdiff.StatsAll`), so the window opens at once. A file opened
-from the list is a diff-mode child session (`Session.EntrySession` →
-`LoadPair`): a missing side is empty text titled `(missing)`; errors, symlinks
+from the list is a `DiffSession` in a child window (`DirDiffSession.Entry`
+→ `LoadPair`): a missing side is empty text titled `(missing)`; errors, symlinks
 to directories and files over 5 MB are refused, binary and invalid UTF-8 fail
 with textio's errors.
 
@@ -802,8 +834,19 @@ Note: the Makefile's `build`, `test`, `check` and `version` targets are useful e
    `Select`. `internal/testrepo`.
 3. `main.go` runs through cliargs and command; `cli.go` and
    `settings_cmd.go` removed; `help` / `version` subcommands and reserved
-   words in cli.sh, README, the usage text and this file. Next: moving the
-   GUI (`app.go`, `windows.go`) to `internal/gui`.
+   words in cli.sh, README, the usage text and this file.
+
+### Refactor 2 — GUI and typed sessions (04-refactor-gui.md, done)
+
+1. `app.go` / `windows.go` / `runGUI` moved to `internal/gui` (`Run`,
+   `Options` crash hooks, files by role); bound methods use the session
+   directly, the per-window state is the unexported `window`.
+2. `internal/session`: `View` (`Text`, `Merge` parts, general names), the
+   `Session` interface (`View`, `ExitCode`) and one type per kind of
+   window; `command` opens them, `gui` type-checks bound calls
+   (`errWrongMode`).
+3. This file. (Also: `settings.sh`'s startup-flash checks match the exact
+   toolbar colours, so they no longer depend on the GTK theme.)
 
 ## Useful commands
 
