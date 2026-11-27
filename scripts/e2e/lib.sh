@@ -55,6 +55,13 @@ focus() {
 # geometry TITLE: prints "X Y W H" of the window.
 geometry() { wmctrl -lG | grep -F "$1" | head -1 | awk '{print $3, $4, $5, $6}'; }
 
+# app_windows: number of open mergediff windows, i.e. titles starting with
+# "mergediff — ". Matching anywhere in the title would also count other
+# applications showing the name, e.g. a browser tab on the GitHub repository.
+app_windows() {
+  wmctrl -l | awk '{ t = $0; for (i = 0; i < 3; i++) sub(/^[^ ]+ +/, "", t); if (index(t, "mergediff — ") == 1) n++ } END { print n + 0 }'
+}
+
 # window_id TITLE: prints the X window id.
 window_id() { wmctrl -l | grep -F "$1" | head -1 | awk '{print $1}'; }
 
