@@ -26,15 +26,13 @@ func compareContents(entries []Entry, p *Progress) {
 	jobs := make(chan *Entry)
 	var wg sync.WaitGroup
 	for range workers() {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			bufs := &buffers{a: make([]byte, chunkSize), b: make([]byte, chunkSize)}
 			for e := range jobs {
 				check(e, bufs)
 				p.addCompared(1)
 			}
-		}()
+		})
 	}
 	var settled int64 // entries that need no check
 	for i := range entries {
