@@ -107,21 +107,22 @@ mergediff/
   docs/mockups/           # UI design reference (see "Design reference")
     mergediff-mockup-light.png
     mergediff-mockup-dark.png
-    mergediff-dir-diff{,-grouped}-{light,dark}.png    # directory diff (01-directory-diff.md)
-    mergediff-dir-merge{,-grouped}-{light,dark}.png   # conflicts window (02-resolve-conflicts.md)
+    mergediff-dir-diff{,-grouped}-{light,dark}.png    # directory diff (docs/specs/01-directory-diff.md)
+    mergediff-dir-merge{,-grouped}-{light,dark}.png   # conflicts window (docs/specs/02-resolve-conflicts.md)
   docs/screenshots/       # Screenshots of the real app (shown in SCREENSHOT.md)
     mergediff-{light,dark}.png                        # testdata/dev merge, 1280×400
     mergediff-resolve{,-grouped}-{light,dark}.png     # conflict-repo.sh, 1400×860
+  docs/specs/             # Instructions for each feature / refactor, NN-name.md (next number for a new one)
+    01-directory-diff.md      # Feature 1 (done)
+    02-resolve-conflicts.md   # Feature 2 (done)
+    03-refactor.md            # Refactor 1: command line (done)
+    04-refactor-gui.md        # Refactor 2: internal/gui and typed sessions (done)
   .gitignore              # Must cover all build/dev output (see "Makefile")
   Makefile                # Dev, build, test and release automation
   LICENSE                 # MIT
   README.md
   SCREENSHOT.md           # All screenshots (README shows one and links here)
   GIT.md                  # Git integration: mergetool, difftool, difftool -d, resolve (linked from README)
-  01-directory-diff.md    # Feature 1 instructions (done)
-  02-resolve-conflicts.md # Feature 2 instructions (done)
-  03-refactor.md          # Refactor 1 instructions: command line (done)
-  04-refactor-gui.md      # Refactor 2 instructions: internal/gui and typed sessions (done)
 ```
 
 ### Wails v3 setup
@@ -487,9 +488,9 @@ close guard, dirty flag). `Windows` keeps them by **window name** (`main`,
 never call in first. Each bound method takes `ctx context.Context` first
 (Wails supplies it and leaves it out of the generated bindings) and uses the
 **calling window's** session, found with `ctx.Value(application.WindowKey)`.
-(01-directory-diff.md proposed an id in the window URL; the calling window
-was chosen instead: no id to pass around, and a window cannot reach another
-window's session.)
+(docs/specs/01-directory-diff.md proposed an id in the window URL; the
+calling window was chosen instead: no id to pass around, and a window cannot
+reach another window's session.)
 
 - The **main window** (opened from the command line) decides the process exit
   code: when it closes, `gui.Run` returns `sess.ExitCode(code, quit)` (what
@@ -735,7 +736,7 @@ the existing theme tokens (deleted is gray, as everywhere), not the mockups.
 ### Conflicts window (`resolveview.ts`)
 
 `docs/mockups/mergediff-dir-merge{,-grouped}-*.png` are the visual
-reference; 02-resolve-conflicts.md has the full behaviour.
+reference; docs/specs/02-resolve-conflicts.md has the full behaviour.
 
 - Title `mergediff — Resolve conflicts · <repo>`. Toolbar: the operation
   sentence (names in bold) and the pill `N of M files unresolved`, green
@@ -803,7 +804,7 @@ Each phase ends with its acceptance criteria met, tests green, and a summary.
 
 Note: the Makefile's `build`, `test`, `check` and `version` targets are useful earlier, so create a basic Makefile in Phase 2 and extend it here.
 
-### Feature 1 — Directory diff (01-directory-diff.md, done)
+### Feature 1 — Directory diff (docs/specs/01-directory-diff.md, done)
 
 1. Per-window sessions (`Windows`, child windows), no visible change.
 2. `internal/dirdiff` and the CLI (`mergediff LEFTDIR RIGHTDIR`).
@@ -814,7 +815,7 @@ Note: the Makefile's `build`, `test`, `check` and `version` targets are useful e
 5. e2e (`scripts/e2e/dirdiff.sh`, including `git difftool -d`; the
    20,000-file timing in `perf.sh`), README, GIT.md, this file.
 
-### Feature 2 — Resolve conflicts (02-resolve-conflicts.md, done)
+### Feature 2 — Resolve conflicts (docs/specs/02-resolve-conflicts.md, done)
 
 1. `internal/gitconflict`: repository, unmerged list, kinds and states,
    stages, accept, operation and labels, the rebase swap.
@@ -825,7 +826,7 @@ Note: the Makefile's `build`, `test`, `check` and `version` targets are useful e
    guard, "edited since Git stopped", the all-resolved banner.
 4. Full e2e, README / SCREENSHOT.md, GIT.md, this file.
 
-### Refactor 1 — Command line (03-refactor.md, done)
+### Refactor 1 — Command line (docs/specs/03-refactor.md, done)
 
 1. `scripts/e2e/cli.sh` pinning the command line before the change;
    `internal/cliargs` (tokenizer, immutable `Option`).
@@ -836,7 +837,7 @@ Note: the Makefile's `build`, `test`, `check` and `version` targets are useful e
    `settings_cmd.go` removed; `help` / `version` subcommands and reserved
    words in cli.sh, README, the usage text and this file.
 
-### Refactor 2 — GUI and typed sessions (04-refactor-gui.md, done)
+### Refactor 2 — GUI and typed sessions (docs/specs/04-refactor-gui.md, done)
 
 1. `app.go` / `windows.go` / `runGUI` moved to `internal/gui` (`Run`,
    `Options` crash hooks, files by role); bound methods use the session
