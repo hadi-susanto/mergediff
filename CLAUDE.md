@@ -84,13 +84,22 @@ mergediff/
     public/.gitkeep       # Copied into dist/ by Vite so dist/.gitkeep survives builds
     src/
       main.ts             # Bootstraps the session, builds layout
+      model.ts            # DOM-free types mirroring the Go JSON (string unions, no enums)
+      merge.ts            # 3-way merge window: panes, chunk actions, Save / Cancel
+      diffview.ts         # 2-way diff window: files (read-only) or scratch (editable, Refresh)
       panes.ts            # Creates the CodeMirror editors
       chunks.ts           # Chunk state, tracking ranges through edits
       highlight.ts        # Line + character decorations
       gutter.ts           # Accept / ignore buttons
+      alignment.ts        # DOM-free chunk alignment between panes (segments, scroll mapping)
       scrollsync.ts       # Chunk-aligned scrolling
       connectors.ts       # SVG curves between panes
       toolbar.ts          # Toolbar, navigation, conflict counter, shortcuts
+      nav.ts              # DOM-free previous / next chunk lookup
+      keys.ts             # Window-wide keyboard shortcuts
+      dialogs.ts          # Modal dialogs on <dialog>
+      languages.ts        # Syntax highlighting by language id, parsers loaded on demand
+      theme.ts            # Light / dark theme from the setting and the system (data-theme)
       filelist-core.ts    # DOM-free file list logic: paths, filter, chips, grouping, selection,
                           #   virtual scrolling window (shared with Feature 2's conflicts list)
       filelist.ts         # Generic file list renderer (columns, group headers, keys, virtual rows)
@@ -326,6 +335,8 @@ Required targets (each with a one-line `## description` shown by `make help`):
   7. `git tag -a $(TAG) -m "Release $(TAG)"` and `git push origin $(TAG)`
   8. print the URL of the Actions run page: `https://github.com/hadi-susanto/mergediff/actions`
 - `release-dry-run` — run steps 1–5 and print what would be tagged, without tagging or pushing
+  (`release` and `release-dry-run` share steps 1–5 as the internal `release-preflight`
+  target, which `make help` does not list)
 
 ### GitHub Actions release workflow (`.github/workflows/release.yml`)
 

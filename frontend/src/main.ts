@@ -14,13 +14,13 @@ import "./styles.css";
 
 /**
  * Prefix of the event the backend emits when a window's close button is
- * used; the window's name follows (closeRequestedEvent in main.go).
+ * used; the window's name follows (closeRequestedEvent, internal/gui/events.go).
  */
 const CLOSE_REQUESTED = "mergediff:close-requested:";
-/** Prefix of the event telling a Conflicts window to refresh (windows.go). */
+/** Prefix of the event telling a Conflicts window to refresh (internal/gui/events.go). */
 const CONFLICTS_CHANGED = "mergediff:conflicts-changed:";
 
-/** Process exit codes, mirroring cli.go. */
+/** Process exit codes, mirroring internal/command/command.go. */
 const EXIT_OK = 0;
 const EXIT_ERROR = 2;
 
@@ -83,7 +83,7 @@ function charDiff(left: string, right: string): Promise<CharSpan[]> {
   return Backend.CharDiff(left, right).then((spans) => (spans ?? []) as unknown as CharSpan[]);
 }
 
-/** Sets the "theme" setting; it starts from the window URL (see main.go). */
+/** Sets the "theme" setting; it starts from the window URL (see internal/gui/options.go). */
 const setTheme = installTheme(
   document.documentElement,
   window.matchMedia("(prefers-color-scheme: dark)"),
