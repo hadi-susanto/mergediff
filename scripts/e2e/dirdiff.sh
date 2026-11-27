@@ -45,7 +45,7 @@ focus "$LIST"
 ui key Escape
 finish_app
 check "Esc closes the list: exit 0" test $RC -eq 0
-check "the files' windows closed with it" test "$(wmctrl -l | grep -cF 'mergediff —')" -eq 0
+check "the files' windows closed with it" test "$(app_windows)" -eq 0
 
 section "git difftool -d"
 # A repository with one modified, one added (staged) and one deleted file.
@@ -75,5 +75,5 @@ focus "$LIST"
 ui key Escape
 finish_app
 check "closing the list: git difftool exits 0" test $RC -eq 0
-check "no window left" test "$(wmctrl -l | grep -cF 'mergediff —')" -eq 0
+check "no window left" test "$(app_windows)" -eq 0
 summary

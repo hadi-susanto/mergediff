@@ -228,7 +228,7 @@ func TestAcceptUnknownSide(t *testing.T) {
 	}
 }
 
-func TestMergeSession(t *testing.T) {
+func TestMerge(t *testing.T) {
 	dir := conflictRepo(t, map[string][3]string{
 		"a.txt":     {"one\ntwo\nthree\n", "one\nTWO main\nthree\nfour\n", "one\nTWO feature\nthree\n"},
 		"b.txt":     {"x\n", gone, "x changed\n"},
@@ -303,7 +303,7 @@ func TestMergeSession(t *testing.T) {
 	}
 }
 
-func TestChangesSession(t *testing.T) {
+func TestChanges(t *testing.T) {
 	dir := conflictRepo(t, map[string][3]string{
 		"theirs-deleted.txt": {"base\n", "base mine\n", gone},
 		"yours-deleted.txt":  {"base\n", gone, "base theirs\n"},

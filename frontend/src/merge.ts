@@ -60,7 +60,7 @@ export interface MergeInput {
   editedOnDisk?: boolean;
 }
 
-/** Process exit codes, mirroring cli.go. */
+/** Process exit codes, mirroring internal/command/command.go. */
 const EXIT_OK = 0;
 const EXIT_CANCEL = 1;
 

@@ -117,13 +117,11 @@ func StatsAll(entries []Entry, done func(i int, s Stat)) {
 	jobs := make(chan int)
 	var wg sync.WaitGroup
 	for range workers() {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for i := range jobs {
 				done(i, Stats(entries[i]))
 			}
-		}()
+		})
 	}
 	for i, e := range entries {
 		if Counted(e) {

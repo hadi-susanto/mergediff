@@ -288,8 +288,10 @@ make version           # version string a build would embed
 make clean             # remove build output and Wails' task cache
 ```
 
-- Go code lives in `internal/` (`config`, `textio`, `diff`, `merge`, `dirdiff`,
-  `gitconflict`, `session`); the root package only wires the CLI and Wails together.
+- Go code lives in `internal/` (`cliargs`, `command`, `gui`, `session`, `config`,
+  `textio`, `diff`, `merge`, `dirdiff`, `gitconflict`; `testrepo` for tests); the
+  root package only wires them together: parse the arguments (`cliargs`), run the
+  command (`command`), open the window (`gui`, the only package using Wails).
 - The frontend (`frontend/src`) is vanilla TypeScript with CodeMirror 6. Logic
   modules are DOM-free and tested with `node --test`.
 - End-to-end tests (`make e2e`, Linux/X11) drive the real window with

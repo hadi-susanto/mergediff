@@ -133,7 +133,7 @@ focus "$LIST"
 ui click "Close"
 check "closing with an unsaved merge asks first" ui find "has unsaved edits"
 ui click "Keep open"
-check "Keep open keeps both windows" test "$(wmctrl -l | grep -cF "mergediff —")" -eq 2
+check "Keep open keeps both windows" test "$(app_windows)" -eq 2
 
 focus "$MERGE"
 ui key ctrl+z click "Apply this change to the result" sleep 0.3
